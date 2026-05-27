@@ -1,19 +1,19 @@
 #!/usr/bin/env python3
 """
-meshctl  --  CLI for MeshCore LoRa mesh networks
+mcorectl  --  CLI for MeshCore LoRa mesh networks
 
 Examples:
-  meshctl contacts
-  meshctl send <key_prefix> "Hello"
-  meshctl recv
-  meshctl listen
-  meshctl trace <relay>,<target>,<relay> -v
-  meshctl neighbours <key_prefix>
-  meshctl status <key_prefix>
-  meshctl route <key_prefix>
-  meshctl rxlog --log rxlog.txt
-  meshctl admin <key_prefix> advert --password <password>
-  meshctl admin <key_prefix> reboot --password <password>
+  mcorectl contacts
+  mcorectl send <key_prefix> "Hello"
+  mcorectl recv
+  mcorectl listen
+  mcorectl trace <relay>,<target>,<relay> -v
+  mcorectl neighbours <key_prefix>
+  mcorectl status <key_prefix>
+  mcorectl route <key_prefix>
+  mcorectl rxlog --log rxlog.txt
+  mcorectl admin <key_prefix> advert --password <password>
+  mcorectl admin <key_prefix> reboot --password <password>
 """
 
 import argparse

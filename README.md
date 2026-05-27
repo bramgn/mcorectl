@@ -4,11 +4,16 @@ A command-line interface for [MeshCore](https://github.com/ripplebiz/MeshCore) L
 
 Supports messaging, live packet monitoring, traces, neighbour table queries, remote node status, and remote admin commands.
 
-## Requirements
+## Install
 
+```bash
+git clone https://github.com/bramgn/mcorectl
+cd mcorectl
+./install.sh
+source ~/.bashrc
 ```
-pip install meshcore
-```
+
+The script installs `meshcore` and `bleak` via pip if needed, symlinks `mcorectl` into `~/.local/bin`, and adds bash completion to `~/.bashrc`.
 
 A MeshCore companion radio node connected via USB serial (default `/dev/ttyUSB0`).
 
@@ -133,3 +138,4 @@ Completes: subcommand names, per-subcommand flags, `/dev/tty*` devices for `--po
 |------|-------------|
 | `mcorectl` | Main CLI tool |
 | `mcorectl_completion.bash` | Bash completion script |
+| `install.sh` | Installer: symlinks binary, installs Python deps, sets up completion |
