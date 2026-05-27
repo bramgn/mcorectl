@@ -21,7 +21,43 @@ A MeshCore companion radio node connected via USB serial (default `/dev/ttyUSB0`
 
 ```
 mcorectl [--port PORT] <command> [options]
+mcorectl --ble <ADDRESS> <command> [options]
 ```
+
+### BLE connection
+
+MeshCore devices that support BLE (e.g. Heltec V3) can be used wirelessly.
+
+**First-time setup** — pair the device once using `bluetoothctl`:
+
+```bash
+bluetoothctl
+[bluetooth]# agent on
+[bluetooth]# scan on
+# Wait for your device to appear, then:
+[bluetooth]# scan off
+[bluetooth]# pair 3C:0F:02:E5:B7:F1   # use your device's address
+# Enter the passkey shown on the device when prompted
+[bluetooth]# trust 3C:0F:02:E5:B7:F1
+[bluetooth]# disconnect 3C:0F:02:E5:B7:F1
+[bluetooth]# quit
+```
+
+**Connecting** — use `--ble <ADDRESS>` in place of `--port`:
+
+```bash
+mcorectl --ble 3C:0F:02:E5:B7:F1 info
+mcorectl --ble 3C:0F:02:E5:B7:F1 listen
+```
+
+**Tip:** set `MCORECTL_BLE` in your `~/.bashrc` to avoid typing the address every time:
+
+```bash
+export MCORECTL_BLE=3C:0F:02:E5:B7:F1
+mcorectl contacts   # uses BLE automatically
+```
+
+Use `mcorectl list` to discover available serial and BLE devices.
 
 ### Contacts & discovery
 
