@@ -28,7 +28,7 @@ DEFAULT_PORT = '/dev/ttyUSB0'
 
 def make_connection(args):
     if getattr(args, 'ble', None):
-        return BLEConnection(address=args.ble)
+        return BLEConnection(address=args.ble, pin=getattr(args, 'pin', None))
     return SerialConnection(args.port, 115200)
 
 def ts():
@@ -685,6 +685,7 @@ def main():
     parser = argparse.ArgumentParser(description='MeshCore trace and monitor tool')
     parser.add_argument('--port', default=DEFAULT_PORT, help=f'Serial port (default: {DEFAULT_PORT})')
     parser.add_argument('--ble', metavar='ADDRESS', help='Connect via BLE (MAC address, e.g. 3C:0F:02:E5:B7:F1)')
+    parser.add_argument('--pin', metavar='PIN', help='BLE PIN if required by the device')
 
     sub = parser.add_subparsers(dest='cmd', required=True)
 
