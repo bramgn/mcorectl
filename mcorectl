@@ -26,6 +26,11 @@ from meshcore.events import EventType
 
 DEFAULT_PORT = '/dev/ttyUSB0'
 
+def make_connection(args):
+    if getattr(args, 'ble', None):
+        return BLEConnection(address=args.ble)
+    return SerialConnection(args.port, 115200)
+
 def ts():
     return datetime.now().strftime('%H:%M:%S')
 
@@ -102,7 +107,7 @@ async def do_trace(mc: MeshCore, path: str, timeout_extra: float = 5.0,
     return len(hop_snrs) >= len(hops), hop_snrs
 
 async def cmd_set_txpower(args):
-    cx = SerialConnection(args.port, 115200)
+    cx = make_connection(args)
     mc = MeshCore(cx)
     await mc.connect()
     si = mc.self_info
@@ -152,7 +157,7 @@ async def cmd_list(args):
 
 
 async def cmd_advert(args):
-    cx = SerialConnection(args.port, 115200)
+    cx = make_connection(args)
     mc = MeshCore(cx)
     await mc.connect()
     result = await mc.commands.send_advert(flood=args.flood)
@@ -165,7 +170,7 @@ async def cmd_advert(args):
 
 
 async def cmd_send(args):
-    cx = SerialConnection(args.port, 115200)
+    cx = make_connection(args)
     mc = MeshCore(cx)
     await mc.connect()
     await mc.ensure_contacts()
@@ -186,7 +191,7 @@ async def cmd_send(args):
 
 
 async def cmd_recv(args):
-    cx = SerialConnection(args.port, 115200)
+    cx = make_connection(args)
     mc = MeshCore(cx)
     await mc.connect()
     await mc.ensure_contacts()
@@ -215,7 +220,7 @@ async def cmd_recv(args):
 
 
 async def cmd_listen(args):
-    cx = SerialConnection(args.port, 115200)
+    cx = make_connection(args)
     mc = MeshCore(cx)
     await mc.connect()
     await mc.ensure_contacts()
@@ -260,7 +265,7 @@ async def cmd_listen(args):
 
 
 async def cmd_rxlog(args):
-    cx = SerialConnection(args.port, 115200)
+    cx = make_connection(args)
     mc = MeshCore(cx)
     await mc.connect()
     await mc.ensure_contacts()
@@ -334,7 +339,7 @@ async def cmd_rxlog(args):
 
 
 async def cmd_channels(args):
-    cx = SerialConnection(args.port, 115200)
+    cx = make_connection(args)
     mc = MeshCore(cx)
     await mc.connect()
     print(f'  {"idx"}  {"name"}')
@@ -351,7 +356,7 @@ async def cmd_channels(args):
 
 
 async def cmd_channel_send(args):
-    cx = SerialConnection(args.port, 115200)
+    cx = make_connection(args)
     mc = MeshCore(cx)
     await mc.connect()
     print(f'[{ts()}] Sending to channel {args.idx}: {args.message!r}')
@@ -377,7 +382,7 @@ def _age_str(ts: int) -> str:
     return f'{secs // 86400}d ago'
 
 async def cmd_contacts(args):
-    cx = SerialConnection(args.port, 115200)
+    cx = make_connection(args)
     mc = MeshCore(cx)
     await mc.connect()
     await mc.ensure_contacts()
@@ -391,7 +396,7 @@ async def cmd_contacts(args):
 
 
 async def cmd_status(args):
-    cx = SerialConnection(args.port, 115200)
+    cx = make_connection(args)
     mc = MeshCore(cx)
     await mc.connect()
     await mc.ensure_contacts()
@@ -432,7 +437,7 @@ async def cmd_status(args):
 
 
 async def cmd_telemetry(args):
-    cx = SerialConnection(args.port, 115200)
+    cx = make_connection(args)
     mc = MeshCore(cx)
     await mc.connect()
     await mc.ensure_contacts()
@@ -459,7 +464,7 @@ async def cmd_telemetry(args):
 
 
 async def cmd_route(args):
-    cx = SerialConnection(args.port, 115200)
+    cx = make_connection(args)
     mc = MeshCore(cx)
     await mc.connect()
     await mc.ensure_contacts()
@@ -486,7 +491,7 @@ async def cmd_route(args):
 
 
 async def cmd_admin(args):
-    cx = SerialConnection(args.port, 115200)
+    cx = make_connection(args)
     mc = MeshCore(cx)
     await mc.connect()
     await mc.ensure_contacts()
@@ -546,7 +551,7 @@ def _bat_pct(mv: int) -> str:
     return f'{mv} mV ({pct}%)'
 
 async def cmd_info(args):
-    cx = SerialConnection(args.port, 115200)
+    cx = make_connection(args)
     mc = MeshCore(cx)
 
     # Subscribe before connect so MESSAGES_WAITING isn't missed
@@ -592,7 +597,7 @@ async def cmd_info(args):
 
 
 async def cmd_stats(args):
-    cx = SerialConnection(args.port, 115200)
+    cx = make_connection(args)
     mc = MeshCore(cx)
     await mc.connect()
 
@@ -625,7 +630,7 @@ async def cmd_stats(args):
 
 
 async def cmd_neighbours(args):
-    cx = SerialConnection(args.port, 115200)
+    cx = make_connection(args)
     mc = MeshCore(cx)
     await mc.connect()
     await mc.ensure_contacts()
@@ -659,7 +664,7 @@ async def cmd_neighbours(args):
 
 
 async def cmd_trace(args):
-    cx = SerialConnection(args.port, 115200)
+    cx = make_connection(args)
     mc = MeshCore(cx)
     await mc.connect()
     await mc.ensure_contacts()
@@ -679,6 +684,7 @@ async def cmd_trace(args):
 def main():
     parser = argparse.ArgumentParser(description='MeshCore trace and monitor tool')
     parser.add_argument('--port', default=DEFAULT_PORT, help=f'Serial port (default: {DEFAULT_PORT})')
+    parser.add_argument('--ble', metavar='ADDRESS', help='Connect via BLE (MAC address, e.g. 3C:0F:02:E5:B7:F1)')
 
     sub = parser.add_subparsers(dest='cmd', required=True)
 

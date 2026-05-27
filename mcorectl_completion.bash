@@ -35,7 +35,7 @@ _mcorectl() {
     # No subcommand yet — complete command names or global flags
     if [[ -z "$cmd" ]]; then
         if [[ "$cur" == -* ]]; then
-            COMPREPLY=($(compgen -W "--port --help" -- "$cur"))
+            COMPREPLY=($(compgen -W "--port --ble --help" -- "$cur"))
         else
             COMPREPLY=($(compgen -W "$commands" -- "$cur"))
         fi
