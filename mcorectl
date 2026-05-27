@@ -1,0 +1,777 @@
+#!/usr/bin/env python3
+"""
+meshctl  --  CLI for MeshCore LoRa mesh networks
+
+Examples:
+  meshctl contacts
+  meshctl send <key_prefix> "Hello"
+  meshctl recv
+  meshctl listen
+  meshctl trace <relay>,<target>,<relay> -v
+  meshctl neighbours <key_prefix>
+  meshctl status <key_prefix>
+  meshctl route <key_prefix>
+  meshctl rxlog --log rxlog.txt
+  meshctl admin <key_prefix> advert --password <password>
+  meshctl admin <key_prefix> reboot --password <password>
+"""
+
+import argparse
+import asyncio
+import logging
+from datetime import datetime
+
+from meshcore import MeshCore, SerialConnection, BLEConnection
+from meshcore.events import EventType
+
+DEFAULT_PORT = '/dev/ttyUSB0'
+
+def ts():
+    return datetime.now().strftime('%H:%M:%S')
+
+def decode_hop_snr(path_hex: str) -> float | None:
+    if len(path_hex) == 2:
+        v = int(path_hex, 16)
+        return (v if v < 128 else v - 256) / 4.0
+    return None
+
+async def do_trace(mc: MeshCore, path: str, timeout_extra: float = 5.0,
+                   verbose: bool = False) -> tuple[bool, list[float]]:
+    """
+    Send a trace and return (reachable, [hop_snrs]).
+
+    Uses TRACE_DATA events, which the firmware emits only when the trace reaches
+    the end of its path (all relay hops forwarded). This makes false positives
+    from intermediate relay retransmissions impossible by design.
+
+    In verbose mode, also watches RX_LOG_DATA to show per-hop progress as the
+    trace propagates (each relay's retransmission is visible to our local radio).
+    """
+    hops = path.split(',')
+    seen_path_lens = set()
+    t0 = asyncio.get_event_loop().time()
+
+    result = await mc.commands.send_trace(path=path)
+    if result.type == EventType.ERROR:
+        return False, []
+
+    expected_ack_bytes = result.payload['expected_ack']  # 4-byte tag
+    trace_tag = int.from_bytes(expected_ack_bytes, 'little')
+    timeout_s = result.payload.get('suggested_timeout', 10000) / 1000 + timeout_extra
+
+    if verbose:
+        print(f'  path: {" -> ".join(hops)}  (timeout {result.payload.get("suggested_timeout")}ms)')
+
+    async def on_rx_log(event):
+        p = event.payload
+        if p.get('payload_typename') != 'TRACE':
+            return
+        if not p.get('pkt_payload', b'').startswith(expected_ack_bytes):
+            return
+        path_hex = p.get('path', '')
+        n_hops = len(path_hex) // 2
+        if n_hops in seen_path_lens:
+            return
+        seen_path_lens.add(n_hops)
+        snrs = [decode_hop_snr(path_hex[i:i+2]) for i in range(0, len(path_hex), 2)]
+        snrs = [s for s in snrs if s is not None]
+        elapsed = asyncio.get_event_loop().time() - t0
+        def hop_name(h):
+            c = mc.get_contact_by_key_prefix(h)
+            return c['adv_name'] if c else h
+        path_so_far = ' -> '.join(hop_name(h) for h in hops[:n_hops]) if n_hops else '(direct)'
+        snr_str = f'SNR {snrs[-1]:.2f} dB' if snrs else ''
+        print(f'  +{elapsed:.2f}s  hop {n_hops}/{len(hops)}  {path_so_far}  rssi={p.get("rssi")} dBm  {snr_str}', flush=True)
+
+    sub_rx = mc.subscribe(EventType.RX_LOG_DATA, on_rx_log) if verbose else None
+    try:
+        trace_event = await mc.wait_for_event(
+            EventType.TRACE_DATA,
+            attribute_filters={'tag': trace_tag},
+            timeout=timeout_s,
+        )
+    finally:
+        if sub_rx is not None:
+            mc.unsubscribe(sub_rx)
+
+    if trace_event is None:
+        return False, []
+
+    path_nodes = trace_event.payload.get('path', [])
+    hop_snrs = [n['snr'] for n in path_nodes if 'snr' in n]
+    return len(hop_snrs) >= len(hops), hop_snrs
+
+async def cmd_set_txpower(args):
+    cx = SerialConnection(args.port, 115200)
+    mc = MeshCore(cx)
+    await mc.connect()
+    si = mc.self_info
+    current = si.get('tx_power', '?')
+    result = await mc.commands.set_tx_power(args.value)
+    if result.type == EventType.ERROR:
+        print(f'ERROR: {result.payload}')
+    else:
+        print(f'TX power: {current} dBm -> {args.value} dBm')
+    await mc.disconnect()
+
+
+async def cmd_list(args):
+    import glob
+    from bleak import BleakScanner
+
+    # Serial devices
+    ports = sorted(glob.glob('/dev/ttyUSB*') + glob.glob('/dev/ttyACM*'))
+    if ports:
+        print('Serial:')
+        for port in ports:
+            try:
+                cx = SerialConnection(port, 115200)
+                mc = MeshCore(cx)
+                await mc.connect()
+                name = mc.self_info.get('name', '?')
+                await mc.disconnect()
+                print(f'  {port}  —  {name}')
+            except Exception:
+                print(f'  {port}  —  (no response)')
+    else:
+        print('Serial: none found')
+
+    # BLE devices
+    UART_SERVICE_UUID = '6e400001-b5a3-f393-e0a9-e50e24dcca9e'
+    try:
+        print('BLE (scanning 5s)...')
+        devices = await BleakScanner.discover(timeout=5.0, service_uuids=[UART_SERVICE_UUID])
+        if devices:
+            print('BLE:')
+            for d in devices:
+                print(f'  {d.address}  —  {d.name or "?"}')
+        else:
+            print('BLE: none found')
+    except Exception:
+        print('BLE: unavailable (Bluetooth service not running)')
+
+
+async def cmd_advert(args):
+    cx = SerialConnection(args.port, 115200)
+    mc = MeshCore(cx)
+    await mc.connect()
+    result = await mc.commands.send_advert(flood=args.flood)
+    kind = 'flood' if args.flood else 'zero-hop'
+    if result.type == EventType.ERROR:
+        print(f'ERROR: {result.payload}')
+    else:
+        print(f'[{ts()}] {kind} advert sent.')
+    await mc.disconnect()
+
+
+async def cmd_send(args):
+    cx = SerialConnection(args.port, 115200)
+    mc = MeshCore(cx)
+    await mc.connect()
+    await mc.ensure_contacts()
+
+    contact = mc.get_contact_by_key_prefix(args.key_prefix)
+    if contact is None:
+        print(f'ERROR: no contact matching {args.key_prefix}')
+        await mc.disconnect()
+        return
+
+    print(f'[{ts()}] Sending to {contact["adv_name"]}: {args.message!r}')
+    result = await mc.commands.send_msg(contact, args.message)
+    if result.type == EventType.MSG_SENT:
+        print(f'[{ts()}] Sent.')
+    else:
+        print(f'[{ts()}] Failed: {result.type} {result.payload}')
+    await mc.disconnect()
+
+
+async def cmd_recv(args):
+    cx = SerialConnection(args.port, 115200)
+    mc = MeshCore(cx)
+    await mc.connect()
+    await mc.ensure_contacts()
+
+    count = 0
+    while True:
+        result = await mc.commands.get_msg()
+        if result.type == EventType.NO_MORE_MSGS:
+            break
+        if result.type == EventType.CONTACT_MSG_RECV:
+            p = result.payload
+            sender_key = p.get('pubkey_prefix', '?')
+            contact = mc.get_contact_by_key_prefix(sender_key)
+            name = contact['adv_name'] if contact else sender_key
+            print(f'[{p.get("sender_timestamp", "?")}] {name} ({sender_key[:8]}): {p.get("text", "")}')
+            count += 1
+        elif result.type == EventType.CHANNEL_MSG_RECV:
+            p = result.payload
+            idx = p.get('channel_idx', '?')
+            print(f'[{p.get("sender_timestamp", "?")}] [ch{idx}] {p.get("text", "")}')
+            count += 1
+
+    if count == 0:
+        print('No pending messages.')
+    await mc.disconnect()
+
+
+async def cmd_listen(args):
+    cx = SerialConnection(args.port, 115200)
+    mc = MeshCore(cx)
+    await mc.connect()
+    await mc.ensure_contacts()
+
+    print(f'[{ts()}] Listening for messages (Ctrl+C to stop)...', flush=True)
+
+    # First drain any buffered messages
+    while True:
+        result = await mc.commands.get_msg()
+        if result.type == EventType.NO_MORE_MSGS:
+            break
+        if result.type == EventType.CONTACT_MSG_RECV:
+            p = result.payload
+            sender_key = p.get('pubkey_prefix', '')
+            contact = mc.get_contact_by_key_prefix(sender_key)
+            name = contact['adv_name'] if contact else sender_key
+            print(f'[buffered] {name} ({sender_key[:8]}): {p.get("text", "")}')
+
+    def on_msg(event):
+        p = event.payload
+        sender_key = p.get('pubkey_prefix', '')
+        contact = mc.get_contact_by_key_prefix(sender_key)
+        name = contact['adv_name'] if contact else sender_key
+        print(f'[{ts()}] {name} ({sender_key[:8]}): {p.get("text", "")}', flush=True)
+
+    def on_chan(event):
+        p = event.payload
+        idx = p.get('channel_idx', '?')
+        print(f'[{ts()}] [ch{idx}] {p.get("text", "")}', flush=True)
+
+    mc.subscribe(EventType.CONTACT_MSG_RECV, on_msg)
+    mc.subscribe(EventType.CHANNEL_MSG_RECV, on_chan)
+    await mc.start_auto_message_fetching()
+
+    try:
+        while True:
+            await asyncio.sleep(1)
+    except (KeyboardInterrupt, asyncio.CancelledError):
+        pass
+
+    await mc.disconnect()
+
+
+async def cmd_rxlog(args):
+    cx = SerialConnection(args.port, 115200)
+    mc = MeshCore(cx)
+    await mc.connect()
+    await mc.ensure_contacts()
+
+    logfile = open(args.log, 'a') if args.log else None
+
+    def log(line):
+        print(line, flush=True)
+        if logfile:
+            print(line, file=logfile, flush=True)
+
+    log(f'[{ts()}] RX log started (Ctrl+C to stop)...')
+
+    def format_path(path_hex: str) -> str:
+        if not path_hex:
+            return ''
+        snrs = []
+        for i in range(0, len(path_hex), 2):
+            v = int(path_hex[i:i+2], 16)
+            snrs.append(f'{(v if v < 128 else v - 256) / 4.0:.2f}dB')
+        return '  hops: ' + ' -> '.join(snrs)
+
+    def on_rx(event):
+        p = event.payload
+        ptype  = p.get('payload_typename', '?')
+        rssi   = p.get('rssi', '?')
+        snr    = p.get('snr', '?')
+        path   = p.get('path', '')
+        extra  = ''
+
+        if ptype == 'ADVERT':
+            name = p.get('adv_name') or '?'
+            if name == '?':
+                adv_key = p.get('adv_key', '')
+                contact = mc.get_contact_by_key_prefix(adv_key[:8]) if adv_key else None
+                name = contact['adv_name'] if contact else adv_key[:8] or '?'
+            via = ''
+            if path:
+                relay = mc.get_contact_by_key_prefix(path[:8])
+                via = f'  via: {relay["adv_name"] if relay else path}'
+            extra = f'  from: {name}{via}'
+
+        elif ptype == 'TEXT_MSG':
+            pkt = p.get('pkt_payload', b'')
+            try:
+                text = pkt[32:].split(b'\x00')[0].decode('utf-8', errors='replace')
+                extra = f'  text: {text!r}'
+            except Exception:
+                pass
+
+        elif ptype == 'TRACE':
+            extra = format_path(path)
+
+        elif ptype == 'ACK':
+            extra = f'  ack: {path}'
+
+        path_str = format_path(path) if ptype not in ('TRACE', 'ACK', 'ADVERT') and path else ''
+        log(f'[{ts()}] {ptype:<12s}  rssi={rssi:>4} dBm  snr={snr:>5} dB{extra}{path_str}')
+
+    mc.subscribe(EventType.RX_LOG_DATA, on_rx)
+
+    try:
+        while True:
+            await asyncio.sleep(1)
+    except (KeyboardInterrupt, asyncio.CancelledError):
+        pass
+    finally:
+        if logfile:
+            logfile.close()
+    await mc.disconnect()
+
+
+async def cmd_channels(args):
+    cx = SerialConnection(args.port, 115200)
+    mc = MeshCore(cx)
+    await mc.connect()
+    print(f'  {"idx"}  {"name"}')
+    print('-' * 35)
+    for idx in range(8):
+        result = await mc.commands.get_channel(idx)
+        if result.type == EventType.ERROR:
+            break
+        name = result.payload.get('channel_name', '')
+        if not name:
+            break
+        print(f'  {idx}    {name}')
+    await mc.disconnect()
+
+
+async def cmd_channel_send(args):
+    cx = SerialConnection(args.port, 115200)
+    mc = MeshCore(cx)
+    await mc.connect()
+    print(f'[{ts()}] Sending to channel {args.idx}: {args.message!r}')
+    result = await mc.commands.send_chan_msg(args.idx, args.message)
+    if result.type == EventType.MSG_SENT:
+        print(f'[{ts()}] Sent.')
+    else:
+        print(f'[{ts()}] Failed: {result.type} {result.payload}')
+    await mc.disconnect()
+
+
+def _age_str(ts: int) -> str:
+    if not ts:
+        return 'never'
+    secs = int(datetime.now().timestamp()) - ts
+    if secs < 0:
+        return 'just now'
+    if secs < 3600:
+        return f'{secs // 60}m ago'
+    if secs < 86400:
+        h, m = secs // 3600, (secs % 3600) // 60
+        return f'{h}h {m:02d}m ago'
+    return f'{secs // 86400}d ago'
+
+async def cmd_contacts(args):
+    cx = SerialConnection(args.port, 115200)
+    mc = MeshCore(cx)
+    await mc.connect()
+    await mc.ensure_contacts()
+    print(f'  {"name":<30}  {"key prefix":<10}  {"type":<10}  last heard')
+    print('-' * 72)
+    for c in sorted(mc.contacts.values(), key=lambda x: -x.get('last_advert', 0)):
+        node_type = {0: 'client', 1: 'repeater', 2: 'room'}.get(c.get('type', -1), '?')
+        age = _age_str(c.get('last_advert', 0))
+        print(f'  {c["adv_name"]:<30}  {c["public_key"][:8]:<10}  {node_type:<10}  {age}')
+    await mc.disconnect()
+
+
+async def cmd_status(args):
+    cx = SerialConnection(args.port, 115200)
+    mc = MeshCore(cx)
+    await mc.connect()
+    await mc.ensure_contacts()
+
+    contact = mc.get_contact_by_key_prefix(args.key_prefix)
+    if contact is None:
+        print(f'ERROR: no contact matching {args.key_prefix}')
+        await mc.disconnect()
+        return
+
+    node_type = {0: 'client', 1: 'repeater', 2: 'room'}.get(contact.get('type', -1), '?')
+    print(f'  name:         {contact["adv_name"]}')
+    print(f'  public key:   {contact["public_key"]}')
+    print(f'  type:         {node_type}')
+    print(f'  last heard:   {_age_str(contact.get("last_advert", 0))}')
+
+    print(f'[{ts()}] Fetching status from {contact["adv_name"]}...')
+    p = await mc.commands.req_status_sync(contact, min_timeout=15)
+    if not p:
+        print('No response.')
+        await mc.disconnect()
+        return
+    uptime = p.get('uptime', 0)
+    h, m, s = uptime // 3600, (uptime % 3600) // 60, uptime % 60
+    bat_mv = p.get('bat')
+    bat_str = _bat_pct(bat_mv) if bat_mv else 'n/a'
+    print(f'  uptime:       {h}h {m:02d}m {s:02d}s')
+    print(f'  battery:      {bat_str}')
+    print(f'  noise floor:  {p.get("noise_floor", "?")} dB')
+    print(f'  last RSSI:    {p.get("last_rssi", "?")} dBm  SNR {p.get("last_snr", "?")} dB')
+    print(f'  tx queue:     {p.get("tx_queue_len", "?")}')
+    print(f'  received:     {p.get("nb_recv", "?")}  sent: {p.get("nb_sent", "?")}')
+    print(f'  flood rx/tx:  {p.get("recv_flood", "?")} / {p.get("sent_flood", "?")}')
+    print(f'  direct rx/tx: {p.get("recv_direct", "?")} / {p.get("sent_direct", "?")}')
+    if p.get('recv_errors') is not None:
+        print(f'  recv errors:  {p["recv_errors"]}')
+    await mc.disconnect()
+
+
+async def cmd_telemetry(args):
+    cx = SerialConnection(args.port, 115200)
+    mc = MeshCore(cx)
+    await mc.connect()
+    await mc.ensure_contacts()
+
+    contact = mc.get_contact_by_key_prefix(args.key_prefix)
+    if contact is None:
+        print(f'ERROR: no contact matching {args.key_prefix}')
+        await mc.disconnect()
+        return
+
+    print(f'[{ts()}] Fetching telemetry from {contact["adv_name"]}...')
+    lpp = await mc.commands.req_telemetry_sync(contact, min_timeout=15)
+    if lpp is None:
+        print('No response.')
+        await mc.disconnect()
+        return
+
+    if not lpp:
+        print('No telemetry data.')
+    else:
+        for entry in lpp:
+            print(f'  {entry}')
+    await mc.disconnect()
+
+
+async def cmd_route(args):
+    cx = SerialConnection(args.port, 115200)
+    mc = MeshCore(cx)
+    await mc.connect()
+    await mc.ensure_contacts()
+
+    contact = mc.get_contact_by_key_prefix(args.key_prefix)
+    if contact is None:
+        print(f'ERROR: no contact matching {args.key_prefix}')
+        await mc.disconnect()
+        return
+
+    print(f'[{ts()}] Discovering route to {contact["adv_name"]}...')
+    result = await mc.commands.send_path_discovery_sync(contact, min_timeout=15)
+    if not result:
+        print('No response.')
+        await mc.disconnect()
+        return
+
+    p = result.payload
+    out_hops = p.get('out_path_len', 0)
+    in_hops = p.get('in_path_len', 0)
+    print(f'  out path: {out_hops} hop(s)  raw: {p.get("out_path", "?")}')
+    print(f'  in path:  {in_hops} hop(s)  raw: {p.get("in_path", "?")}')
+    await mc.disconnect()
+
+
+async def cmd_admin(args):
+    cx = SerialConnection(args.port, 115200)
+    mc = MeshCore(cx)
+    await mc.connect()
+    await mc.ensure_contacts()
+
+    contact = mc.get_contact_by_key_prefix(args.key_prefix)
+    if contact is None:
+        print(f'ERROR: no contact matching {args.key_prefix}')
+        await mc.disconnect()
+        return
+
+    print(f'[{ts()}] Logging into {contact["adv_name"]}...')
+    login = await mc.commands.send_login_sync(contact, args.password, min_timeout=15)
+    if not login or login.type != EventType.LOGIN_SUCCESS:
+        print('Login failed.')
+        await mc.disconnect()
+        return
+
+    print(f'  Logged in. Sending command: {args.admin_cmd!r}')
+    pubkey_prefix = contact['public_key'][:12]
+    # Drain any stale buffered messages before sending so we only see the fresh reply
+    while True:
+        stale = await mc.commands.get_msg()
+        if stale.type == EventType.NO_MORE_MSGS:
+            break
+    waiting_future = asyncio.get_event_loop().create_future()
+    def _on_waiting(event):
+        if not waiting_future.done():
+            waiting_future.set_result(event)
+    sub = mc.subscribe(EventType.MESSAGES_WAITING, _on_waiting)
+    try:
+        result = await mc.commands.send_cmd(contact, args.admin_cmd)
+        if result.type == EventType.ERROR:
+            print(f'  Send failed: {result.payload}')
+            waiting_future.cancel()
+        else:
+            timeout_s = result.payload.get('suggested_timeout', 10000) / 1000 + 5.0
+            try:
+                await asyncio.wait_for(waiting_future, timeout_s)
+                while True:
+                    msg = await mc.commands.get_msg()
+                    if msg.type == EventType.NO_MORE_MSGS:
+                        break
+                    if msg.type == EventType.CONTACT_MSG_RECV:
+                        p = msg.payload
+                        if p.get('pubkey_prefix', '').startswith(pubkey_prefix[:8]):
+                            print(f'  Reply: {p.get("text", "")}')
+            except asyncio.TimeoutError:
+                print('  No reply.')
+    finally:
+        mc.unsubscribe(sub)
+        await mc.commands.send_logout(contact)
+    await mc.disconnect()
+
+
+def _bat_pct(mv: int) -> str:
+    pct = max(0, min(100, round((mv - 3000) / 1200 * 100)))
+    return f'{mv} mV ({pct}%)'
+
+async def cmd_info(args):
+    cx = SerialConnection(args.port, 115200)
+    mc = MeshCore(cx)
+
+    # Subscribe before connect so MESSAGES_WAITING isn't missed
+    msgs_waiting = asyncio.get_event_loop().create_future()
+    def _on_msgs(event):
+        if not msgs_waiting.done():
+            msgs_waiting.set_result(True)
+    mc.subscribe(EventType.MESSAGES_WAITING, _on_msgs)
+    await mc.connect()
+
+    core = await mc.commands.get_stats_core()
+
+    # Brief wait to catch a MESSAGES_WAITING that may follow appstart
+    try:
+        await asyncio.wait_for(asyncio.shield(msgs_waiting), timeout=0.5)
+    except asyncio.TimeoutError:
+        pass
+
+    si = mc.self_info
+    if si:
+        print(f'  name:        {si.get("name", "?")}')
+        print(f'  public key:  {si.get("public_key", "?")}')
+
+    if core and core.type != EventType.ERROR:
+        p = core.payload
+        uptime = p.get('uptime_secs', 0)
+        h, m, s = uptime // 3600, (uptime % 3600) // 60, uptime % 60
+        bat_mv = p.get('battery_mv')
+        print(f'  uptime:      {h}h {m:02d}m {s:02d}s')
+        print(f'  battery:     {_bat_pct(bat_mv) if bat_mv else "?"}')
+
+    if si:
+        print(f'  freq:        {si.get("radio_freq", "?")} MHz')
+        print(f'  bandwidth:   {si.get("radio_bw", "?")} kHz')
+        print(f'  spreading:   SF{si.get("radio_sf", "?")}')
+        print(f'  coding rate: {si.get("radio_cr", "?")}')
+        print(f'  tx power:    {si.get("tx_power", "?")} dBm')
+
+    pending = msgs_waiting.done() and msgs_waiting.result()
+    print(f'  messages:    {"pending (run: meshctl recv)" if pending else "none"}')
+
+    await mc.disconnect()
+
+
+async def cmd_stats(args):
+    cx = SerialConnection(args.port, 115200)
+    mc = MeshCore(cx)
+    await mc.connect()
+
+    core = await mc.commands.get_stats_core()
+    radio = await mc.commands.get_stats_radio()
+    packets = await mc.commands.get_stats_packets()
+
+    if core and core.type != EventType.ERROR:
+        p = core.payload
+        print(f'  errors:      {p.get("errors", "?")}')
+        print(f'  tx queue:    {p.get("queue_len", "?")}')
+
+    if radio and radio.type != EventType.ERROR:
+        p = radio.payload
+        print(f'  noise floor: {p.get("noise_floor", "?")} dB')
+        print(f'  last RSSI:   {p.get("last_rssi", "?")} dBm  SNR {p.get("last_snr", "?")} dB')
+        tx_air = p.get("tx_air_secs", 0)
+        rx_air = p.get("rx_air_secs", 0)
+        print(f'  air time:    tx {tx_air}s  rx {rx_air}s')
+
+    if packets and packets.type != EventType.ERROR:
+        p = packets.payload
+        print(f'  packets rx:  {p.get("recv", "?")}  tx: {p.get("sent", "?")}')
+        print(f'  flood rx/tx: {p.get("flood_rx", "?")} / {p.get("flood_tx", "?")}')
+        print(f'  direct rx/tx:{p.get("direct_rx", "?")} / {p.get("direct_tx", "?")}')
+        if p.get('recv_errors') is not None:
+            print(f'  recv errors: {p["recv_errors"]}')
+
+    await mc.disconnect()
+
+
+async def cmd_neighbours(args):
+    cx = SerialConnection(args.port, 115200)
+    mc = MeshCore(cx)
+    await mc.connect()
+    await mc.ensure_contacts()
+
+    relay = mc.get_contact_by_key_prefix(args.key_prefix)
+    if relay is None:
+        print(f'ERROR: no contact matching {args.key_prefix!r} — try rxlog to catch its advert first')
+        await mc.disconnect()
+        return
+
+    print(f'[{ts()}] Querying neighbour table of {relay["adv_name"]} ({relay["public_key"][:8]})...')
+    result = await mc.commands.fetch_all_neighbours(relay, pubkey_prefix_length=8)
+    if not result:
+        print('No response from relay.')
+        await mc.disconnect()
+        return
+
+    neighbours = result.get('neighbours', [])
+    if not neighbours:
+        print('Relay responded but reported no neighbours.')
+    else:
+        print(f'  {"pubkey":<20}  {"SNR":>7}  last heard')
+        for n in sorted(neighbours, key=lambda x: x['secs_ago']):
+            age = n['secs_ago']
+            age_str = f'{age//60}m{age%60:02d}s ago'
+            contact = mc.get_contact_by_key_prefix(n['pubkey'])
+            name = f'  ({contact["adv_name"]})' if contact else ''
+            print(f'  {n["pubkey"]:<20}  {n["snr"]:>5} dB  {age_str}{name}')
+
+    await mc.disconnect()
+
+
+async def cmd_trace(args):
+    cx = SerialConnection(args.port, 115200)
+    mc = MeshCore(cx)
+    await mc.connect()
+    await mc.ensure_contacts()
+
+    print(f'[{ts()}] Tracing {args.path}...')
+    reachable, hop_snrs = await do_trace(mc, args.path, verbose=args.verbose)
+
+    if reachable:
+        snr_str = '  ->  '.join(f'{s:.2f} dB' for s in hop_snrs)
+        print(f'[{ts()}] REACHABLE — hop SNRs: {snr_str}')
+    else:
+        print(f'[{ts()}] No reply.')
+
+    await mc.disconnect()
+    return 0 if reachable else 1
+
+def main():
+    parser = argparse.ArgumentParser(description='MeshCore trace and monitor tool')
+    parser.add_argument('--port', default=DEFAULT_PORT, help=f'Serial port (default: {DEFAULT_PORT})')
+
+    sub = parser.add_subparsers(dest='cmd', required=True)
+
+    p_adv = sub.add_parser('advert', help='Send an advertisement from the local node')
+    p_adv.add_argument('--flood', action='store_true', help='Flood advert (default: zero-hop)')
+
+    sub.add_parser('list', help='List available MeshCore devices (serial and BLE)')
+    sub.add_parser('contacts', help='List all contacts')
+    sub.add_parser('channels', help='List available channels')
+    p_chan_send = sub.add_parser('channel-send', help='Send a message to a channel')
+    p_chan_send.add_argument('idx', type=int, help='Channel index (see: meshctl channels)')
+    p_chan_send.add_argument('message', help='Message text')
+
+    p_status = sub.add_parser('status', help='Fetch status from a remote node')
+    p_status.add_argument('key_prefix', help='Public key prefix of target node')
+
+    p_telem = sub.add_parser('telemetry', help='Fetch telemetry from a remote node')
+    p_telem.add_argument('key_prefix', help='Public key prefix of target node')
+
+    p_path = sub.add_parser('route', help='Discover the mesh route to a contact')
+    p_path.add_argument('key_prefix', help='Public key prefix of target node')
+
+    p_adm = sub.add_parser('admin', help='Login to a remote node and run a command (advert, reboot, …)')
+    p_adm.add_argument('key_prefix', help='Public key prefix of target node')
+    p_adm.add_argument('admin_cmd', metavar='command', help='Command to send (e.g. advert, reboot, set key value)')
+    p_adm.add_argument('--password', required=True, help='Admin password')
+
+    sub.add_parser('info', help='Show local node identity (name, key, battery, uptime)')
+    sub.add_parser('stats', help='Show local node radio and packet statistics')
+    p_txp = sub.add_parser('set-txpower', help='Set local node TX power in dBm')
+    p_txp.add_argument('value', type=int, help='TX power in dBm (e.g. 1–22)')
+
+    p_send = sub.add_parser('send', help='Send a message to a contact')
+    p_send.add_argument('key_prefix', help='Public key prefix of recipient, e.g. 01e9af70')
+    p_send.add_argument('message', help='Message text')
+
+    sub.add_parser('recv', help='Fetch and print all pending messages')
+
+    sub.add_parser('listen', help='Live message monitor (Ctrl+C to stop)')
+
+    p_rxlog = sub.add_parser('rxlog', help='Live RX packet log (Ctrl+C to stop)')
+    p_rxlog.add_argument('--log', metavar='FILE', help='Also write output to this file')
+
+    p_nb = sub.add_parser('neighbours', help='Fetch neighbour table from a relay (proves end-to-end reachability)')
+    p_nb.add_argument('key_prefix', help='Public key prefix of the relay, e.g. 64')
+
+    p_trace = sub.add_parser('trace', help='Send a trace and print result; exits 0 if reachable, 1 if not')
+    p_trace.add_argument('path', help='Comma-separated hop bytes, e.g. 78,64,78 (include return path)')
+    p_trace.add_argument('-v', '--verbose', action='store_true', help='Show each hop as it arrives')
+
+    args = parser.parse_args()
+    logging.basicConfig(level=logging.WARNING)
+
+    import sys
+    try:
+        if args.cmd == 'advert':
+            asyncio.run(cmd_advert(args))
+        elif args.cmd == 'list':
+            asyncio.run(cmd_list(args))
+        elif args.cmd == 'contacts':
+            asyncio.run(cmd_contacts(args))
+        elif args.cmd == 'channels':
+            asyncio.run(cmd_channels(args))
+        elif args.cmd == 'channel-send':
+            asyncio.run(cmd_channel_send(args))
+        elif args.cmd == 'status':
+            asyncio.run(cmd_status(args))
+        elif args.cmd == 'telemetry':
+            asyncio.run(cmd_telemetry(args))
+        elif args.cmd == 'route':
+            asyncio.run(cmd_route(args))
+        elif args.cmd == 'admin':
+            asyncio.run(cmd_admin(args))
+        elif args.cmd == 'set-txpower':
+            asyncio.run(cmd_set_txpower(args))
+        elif args.cmd == 'info':
+            asyncio.run(cmd_info(args))
+        elif args.cmd == 'stats':
+            asyncio.run(cmd_stats(args))
+        elif args.cmd == 'send':
+            asyncio.run(cmd_send(args))
+        elif args.cmd == 'recv':
+            asyncio.run(cmd_recv(args))
+        elif args.cmd == 'listen':
+            asyncio.run(cmd_listen(args))
+        elif args.cmd == 'rxlog':
+            asyncio.run(cmd_rxlog(args))
+        elif args.cmd == 'neighbours':
+            asyncio.run(cmd_neighbours(args))
+        elif args.cmd == 'trace':
+            sys.exit(asyncio.run(cmd_trace(args)) or 0)
+    except KeyboardInterrupt:
+        pass
+
+if __name__ == '__main__':
+    main()
