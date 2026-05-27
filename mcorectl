@@ -23,6 +23,7 @@ from datetime import datetime
 
 from meshcore import MeshCore, SerialConnection, BLEConnection
 from meshcore.events import EventType
+from serial import SerialException
 
 DEFAULT_PORT = '/dev/ttyUSB0'
 
@@ -784,6 +785,9 @@ def main():
             sys.exit(asyncio.run(cmd_trace(args)) or 0)
     except KeyboardInterrupt:
         pass
+    except (ConnectionError, SerialException) as e:
+        print(f'error: {e}', file=sys.stderr)
+        sys.exit(1)
 
 if __name__ == '__main__':
     main()
