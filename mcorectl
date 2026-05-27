@@ -682,9 +682,14 @@ async def cmd_trace(args):
     return 0 if reachable else 1
 
 def main():
+    import os
+    default_ble = os.environ.get('MCORECTL_BLE')
+    default_port = os.environ.get('MCORECTL_PORT', DEFAULT_PORT)
+
     parser = argparse.ArgumentParser(description='MeshCore trace and monitor tool')
-    parser.add_argument('--port', default=DEFAULT_PORT, help=f'Serial port (default: {DEFAULT_PORT})')
-    parser.add_argument('--ble', metavar='ADDRESS', help='Connect via BLE (MAC address, e.g. 3C:0F:02:E5:B7:F1)')
+    parser.add_argument('--port', default=default_port, help=f'Serial port (default: {default_port})')
+    parser.add_argument('--ble', metavar='ADDRESS', default=default_ble,
+                        help='Connect via BLE (MAC address). Overrides --port. Can also be set via MCORECTL_BLE env var.')
     parser.add_argument('--pin', metavar='PIN', help='BLE PIN if required by the device')
 
     sub = parser.add_subparsers(dest='cmd', required=True)
