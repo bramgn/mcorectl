@@ -390,7 +390,7 @@ async def cmd_contacts(args):
     print(f'  {"name":<30}  {"key prefix":<10}  {"type":<10}  last heard')
     print('-' * 72)
     for c in sorted(mc.contacts.values(), key=lambda x: -x.get('last_advert', 0)):
-        node_type = {0: 'client', 1: 'repeater', 2: 'room'}.get(c.get('type', -1), '?')
+        node_type = {1: 'client', 2: 'repeater', 3: 'room'}.get(c.get('type', -1), '?')
         age = _age_str(c.get('last_advert', 0))
         print(f'  {c["adv_name"]:<30}  {c["public_key"][:8]:<10}  {node_type:<10}  {age}')
     await mc.disconnect()
@@ -408,7 +408,7 @@ async def cmd_status(args):
         await mc.disconnect()
         return
 
-    node_type = {0: 'client', 1: 'repeater', 2: 'room'}.get(contact.get('type', -1), '?')
+    node_type = {1: 'client', 2: 'repeater', 3: 'room'}.get(contact.get('type', -1), '?')
     print(f'  name:         {contact["adv_name"]}')
     print(f'  public key:   {contact["public_key"]}')
     print(f'  type:         {node_type}')
