@@ -59,6 +59,29 @@ mcorectl contacts   # uses BLE automatically
 
 Use `mcorectl list` to discover available serial and BLE devices.
 
+## Command overview
+
+| Command | Local (USB/BLE) | Remote (`key_prefix`) |
+|---|---|---|
+| `info` | ✓ name, key, uptime, battery, radio settings, pending msgs | — |
+| `stats` | ✓ radio & packet statistics | — |
+| `set-txpower <dbm>` | ✓ | — |
+| `contacts` | ✓ | — |
+| `channels` | ✓ | — |
+| `channel-send <idx> <msg>` | ✓ | — |
+| `advert [--flood]` | ✓ | — |
+| `recv` | ✓ drain buffered messages | — |
+| `listen` | ✓ live message monitor | — |
+| `rxlog [--log file]` | ✓ live LoRa packet log | — |
+| `send <prefix> <msg>` | ✓ routes via local node | — |
+| `list` | ✓ discover serial/BLE devices | — |
+| `status <prefix>` | — | ✓ uptime, battery, packet counts |
+| `telemetry <prefix>` | — | ✓ voltage, temperature |
+| `neighbours <prefix>` | — | ✓ relay's neighbour table |
+| `route <prefix>` | — | ✓ mesh route discovery |
+| `trace <path>` | — | ✓ hop-by-hop reachability |
+| `admin <prefix> <cmd>` | — | ✓ advert, reboot, set … |
+
 ### Contacts & discovery
 
 ```bash
