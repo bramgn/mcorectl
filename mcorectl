@@ -121,6 +121,27 @@ async def cmd_set_txpower(args):
     await mc.disconnect()
 
 
+async def cmd_set_path(args):
+    cx = make_connection(args)
+    mc = MeshCore(cx)
+    await mc.connect()
+    await mc.ensure_contacts()
+
+    contact = mc.get_contact_by_key_prefix(args.key_prefix)
+    if contact is None:
+        print(f'ERROR: no contact matching {args.key_prefix!r}')
+        await mc.disconnect()
+        return
+
+    path_hex = args.path.replace(',', '')
+    result = await mc.commands.update_contact(contact, path=path_hex)
+    if result is None or result.type == EventType.ERROR:
+        print(f'ERROR: {result.payload if result else "no response"}')
+    else:
+        print(f'Path set: {contact["adv_name"]} ({contact["public_key"][:8]}) -> via {args.path}')
+    await mc.disconnect()
+
+
 async def cmd_list(args):
     import glob
     from bleak import BleakScanner
@@ -714,6 +735,10 @@ def main():
     p_path = sub.add_parser('route', help='Discover the mesh route to a contact')
     p_path.add_argument('key_prefix', help='Public key prefix of target node')
 
+    p_setpath = sub.add_parser('set-path', help='Manually set the route to a contact')
+    p_setpath.add_argument('key_prefix', help='Public key prefix of target contact')
+    p_setpath.add_argument('path', help='Relay hops to reach the target, e.g. f5,64')
+
     p_adm = sub.add_parser('admin', help='Login to a remote node and run a command (advert, reboot, …)')
     p_adm.add_argument('key_prefix', help='Public key prefix of target node')
     p_adm.add_argument('admin_cmd', metavar='command', help='Command to send (e.g. advert, reboot, set key value)')
@@ -763,6 +788,8 @@ def main():
             asyncio.run(cmd_telemetry(args))
         elif args.cmd == 'route':
             asyncio.run(cmd_route(args))
+        elif args.cmd == 'set-path':
+            asyncio.run(cmd_set_path(args))
         elif args.cmd == 'admin':
             asyncio.run(cmd_admin(args))
         elif args.cmd == 'set-txpower':

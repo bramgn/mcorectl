@@ -10,7 +10,7 @@ _mcorectl() {
     local cur prev words cword
     _init_completion || return
 
-    local commands="list advert contacts channels channel-send status telemetry route admin info stats set-txpower send recv listen rxlog neighbours trace"
+    local commands="list advert contacts channels channel-send status telemetry route set-path admin info stats set-txpower send recv listen rxlog neighbours trace"
 
     # Complete --port value with available serial devices
     if [[ "$prev" == "--port" ]]; then
