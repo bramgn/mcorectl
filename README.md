@@ -79,7 +79,7 @@ Use `mcorectl list` to discover available serial and BLE devices.
 | `telemetry <prefix>` | — | ✓ voltage, temperature |
 | `neighbours <prefix>` | — | ✓ relay's neighbour table |
 | `route <prefix>` | — | ✓ mesh route discovery |
-| `trace <path>` | — | ✓ hop-by-hop reachability |
+| `trace <path>` | ✓ hop-by-hop reachability test | — |
 | `admin <prefix> <cmd>` | — | ✓ advert, reboot, set … |
 
 ### Contacts & discovery
