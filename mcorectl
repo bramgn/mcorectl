@@ -293,13 +293,26 @@ async def cmd_rxlog(args):
     await mc.ensure_contacts()
 
     logfile = open(args.log, 'a') if args.log else None
+    csvfile = open(args.csv, 'a') if args.csv else None
+    filter_prefix = args.filter.lower() if args.filter else None
+
+    if csvfile and csvfile.tell() == 0:
+        print('timestamp,type,rssi,snr,node', file=csvfile, flush=True)
 
     def log(line):
         print(line, flush=True)
         if logfile:
             print(line, file=logfile, flush=True)
 
-    log(f'[{ts()}] RX log started (Ctrl+C to stop)...')
+    def log_csv(ptype, rssi, snr, node=''):
+        if csvfile:
+            from datetime import datetime
+            print(f'{datetime.now().isoformat()},{ptype},{rssi},{snr},{node}', file=csvfile, flush=True)
+
+    if filter_prefix:
+        log(f'[{ts()}] RX log started, filtering for {filter_prefix!r} (Ctrl+C to stop)...')
+    else:
+        log(f'[{ts()}] RX log started (Ctrl+C to stop)...')
 
     def format_path(path_hex: str) -> str:
         if not path_hex:
@@ -317,6 +330,7 @@ async def cmd_rxlog(args):
         snr    = p.get('snr', '?')
         path   = p.get('path', '')
         extra  = ''
+        node_name = ''
 
         if ptype == 'ADVERT':
             name = p.get('adv_name') or '?'
@@ -324,11 +338,20 @@ async def cmd_rxlog(args):
                 adv_key = p.get('adv_key', '')
                 contact = mc.get_contact_by_key_prefix(adv_key[:8]) if adv_key else None
                 name = contact['adv_name'] if contact else adv_key[:8] or '?'
+            node_name = name
+            adv_key = p.get('adv_key', '')
+            if filter_prefix and not (
+                adv_key.startswith(filter_prefix) or name.lower().startswith(filter_prefix)
+            ):
+                return
             via = ''
             if path:
                 relay = mc.get_contact_by_key_prefix(path[:8])
                 via = f'  via: {relay["adv_name"] if relay else path}'
             extra = f'  from: {name}{via}'
+
+        elif filter_prefix:
+            return  # when filtering, only show adverts
 
         elif ptype == 'TEXT_MSG':
             pkt = p.get('pkt_payload', b'')
@@ -346,6 +369,7 @@ async def cmd_rxlog(args):
 
         path_str = format_path(path) if ptype not in ('TRACE', 'ACK', 'ADVERT') and path else ''
         log(f'[{ts()}] {ptype:<12s}  rssi={rssi:>4} dBm  snr={snr:>5} dB{extra}{path_str}')
+        log_csv(ptype, rssi, snr, node_name)
 
     mc.subscribe(EventType.RX_LOG_DATA, on_rx)
 
@@ -357,6 +381,8 @@ async def cmd_rxlog(args):
     finally:
         if logfile:
             logfile.close()
+        if csvfile:
+            csvfile.close()
     await mc.disconnect()
 
 
@@ -759,6 +785,8 @@ def main():
 
     p_rxlog = sub.add_parser('rxlog', help='Live RX packet log (Ctrl+C to stop)')
     p_rxlog.add_argument('--log', metavar='FILE', help='Also write output to this file')
+    p_rxlog.add_argument('--csv', metavar='FILE', help='Write timestamp,type,rssi,snr,node to CSV file')
+    p_rxlog.add_argument('--filter', metavar='PREFIX', help='Only show adverts from this key prefix or name prefix')
 
     p_nb = sub.add_parser('neighbours', help='Fetch neighbour table from a relay (proves end-to-end reachability)')
     p_nb.add_argument('key_prefix', help='Public key prefix of the relay, e.g. 64')
