@@ -340,14 +340,19 @@ async def cmd_rxlog(args):
                 name = contact['adv_name'] if contact else adv_key[:8] or '?'
             node_name = name
             adv_key = p.get('adv_key', '')
-            if filter_prefix and not (
+            relay_contact = mc.get_contact_by_key_prefix(path[:8]) if path else None
+            relay_key = relay_contact['public_key'] if relay_contact else path[:8] if path else ''
+            from_filter = filter_prefix and (
                 adv_key.startswith(filter_prefix) or name.lower().startswith(filter_prefix)
-            ):
+            )
+            via_filter = filter_prefix and relay_key.startswith(filter_prefix)
+            if filter_prefix and not (from_filter or via_filter):
                 return
             via = ''
-            if path:
-                relay = mc.get_contact_by_key_prefix(path[:8])
-                via = f'  via: {relay["adv_name"] if relay else path}'
+            if relay_contact:
+                via = f'  via: {relay_contact["adv_name"]}'
+            elif path:
+                via = f'  via: {path[:8]}'
             extra = f'  from: {name}{via}'
 
         elif filter_prefix:
