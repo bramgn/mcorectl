@@ -355,8 +355,15 @@ async def cmd_rxlog(args):
                 via = f'  via: {path[:8]}'
             extra = f'  from: {name}{via}'
 
+        elif filter_prefix and ptype == 'TRACE':
+            # Capture trace packets that passed through the filtered node
+            # path contains per-hop SNR bytes; each relay is identified by position
+            # We capture all traces when filtering — they provide RSSI/SNR data points
+            extra = format_path(path)
+            node_name = 'trace'
+
         elif filter_prefix:
-            return  # when filtering, only show adverts
+            return  # skip everything else when filtering
 
         elif ptype == 'TEXT_MSG':
             pkt = p.get('pkt_payload', b'')
