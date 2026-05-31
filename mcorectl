@@ -169,37 +169,32 @@ async def cmd_set_path(args):
 
 
 async def cmd_connect(args):
-    import re, subprocess
+    import re
+    from bleak import BleakScanner
     addr = args.address
     if not re.match(r'^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$', addr):
         print(f'error: invalid Bluetooth address: {addr!r}', file=sys.stderr)
         sys.exit(1)
 
-    print(f'Connecting to {addr}...')
-    result = subprocess.run(
-        ['bluetoothctl', 'connect', addr],
-        capture_output=True, text=True, timeout=20,
-    )
-    output = result.stdout + result.stderr
-    if 'Connection successful' in output or 'Connected: yes' in output:
-        _write_ble_state(addr)
-        print(f'Connected. Saved as default BLE device.')
-    else:
-        print(output.strip() or 'bluetoothctl returned no output.', file=sys.stderr)
+    print(f'Scanning for {addr}...')
+    device = await BleakScanner.find_device_by_address(addr, timeout=8)
+    if device is None:
+        print(f'error: device {addr} not found (is it on and not connected to another client?)', file=sys.stderr)
         sys.exit(1)
+
+    _write_ble_state(addr)
+    print(f'Found: {device.name or addr}')
+    print(f'Saved as default BLE device — subsequent commands will connect automatically.')
 
 
 async def cmd_disconnect(args):
-    import subprocess
     addr = _read_ble_state()
     if not addr:
         print('No saved BLE device.', file=sys.stderr)
         sys.exit(1)
 
-    print(f'Disconnecting {addr}...')
-    subprocess.run(['bluetoothctl', 'disconnect', addr], capture_output=True, text=True, timeout=10)
     _clear_ble_state()
-    print('Disconnected. Reverted to serial.')
+    print(f'Cleared saved device ({addr}). Reverted to serial.')
 
 
 async def cmd_list(args):
