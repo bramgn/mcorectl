@@ -19,6 +19,8 @@ Examples:
 import argparse
 import asyncio
 import logging
+import os
+import sys
 from datetime import datetime
 
 from meshcore import MeshCore, SerialConnection, BLEConnection
@@ -26,10 +28,34 @@ from meshcore.events import EventType
 from serial import SerialException
 
 DEFAULT_PORT = '/dev/ttyUSB0'
+_STATE_FILE = os.path.expanduser('~/.config/mcorectl/ble')
+
+
+def _read_ble_state():
+    try:
+        with open(_STATE_FILE) as f:
+            return f.read().strip() or None
+    except FileNotFoundError:
+        return None
+
+
+def _write_ble_state(address):
+    os.makedirs(os.path.dirname(_STATE_FILE), exist_ok=True)
+    with open(_STATE_FILE, 'w') as f:
+        f.write(address + '\n')
+
+
+def _clear_ble_state():
+    try:
+        os.remove(_STATE_FILE)
+    except FileNotFoundError:
+        pass
+
 
 def make_connection(args):
-    if getattr(args, 'ble', None):
-        return BLEConnection(address=args.ble, pin=getattr(args, 'pin', None))
+    addr = getattr(args, 'ble', None) or _read_ble_state()
+    if addr:
+        return BLEConnection(address=addr, pin=getattr(args, 'pin', None))
     return SerialConnection(args.port, 115200)
 
 def ts():
@@ -140,6 +166,40 @@ async def cmd_set_path(args):
     else:
         print(f'Path set: {contact["adv_name"]} ({contact["public_key"][:8]}) -> via {args.path}')
     await mc.disconnect()
+
+
+async def cmd_connect(args):
+    import re, subprocess
+    addr = args.address
+    if not re.match(r'^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$', addr):
+        print(f'error: invalid Bluetooth address: {addr!r}', file=sys.stderr)
+        sys.exit(1)
+
+    print(f'Connecting to {addr}...')
+    result = subprocess.run(
+        ['bluetoothctl', 'connect', addr],
+        capture_output=True, text=True, timeout=20,
+    )
+    output = result.stdout + result.stderr
+    if 'Connection successful' in output or 'Connected: yes' in output:
+        _write_ble_state(addr)
+        print(f'Connected. Saved as default BLE device.')
+    else:
+        print(output.strip() or 'bluetoothctl returned no output.', file=sys.stderr)
+        sys.exit(1)
+
+
+async def cmd_disconnect(args):
+    import subprocess
+    addr = _read_ble_state()
+    if not addr:
+        print('No saved BLE device.', file=sys.stderr)
+        sys.exit(1)
+
+    print(f'Disconnecting {addr}...')
+    subprocess.run(['bluetoothctl', 'disconnect', addr], capture_output=True, text=True, timeout=10)
+    _clear_ble_state()
+    print('Disconnected. Reverted to serial.')
 
 
 async def cmd_list(args):
@@ -742,7 +802,6 @@ async def cmd_trace(args):
     return 0 if reachable else 1
 
 def main():
-    import os
     default_ble = os.environ.get('MCORECTL_BLE')
     default_port = os.environ.get('MCORECTL_PORT', DEFAULT_PORT)
 
@@ -753,6 +812,11 @@ def main():
     parser.add_argument('--pin', metavar='PIN', help='BLE PIN if required by the device')
 
     sub = parser.add_subparsers(dest='cmd', required=True)
+
+    p_conn = sub.add_parser('connect', help='Connect to a BLE device and save it as the default')
+    p_conn.add_argument('address', help='Bluetooth MAC address, e.g. 3C:0F:02:E5:B7:F1')
+
+    sub.add_parser('disconnect', help='Disconnect the saved BLE device and revert to serial')
 
     p_adv = sub.add_parser('advert', help='Send an advertisement from the local node')
     p_adv.add_argument('--flood', action='store_true', help='Flood advert (default: zero-hop)')
@@ -810,9 +874,12 @@ def main():
     args = parser.parse_args()
     logging.basicConfig(level=logging.WARNING)
 
-    import sys
     try:
-        if args.cmd == 'advert':
+        if args.cmd == 'connect':
+            asyncio.run(cmd_connect(args))
+        elif args.cmd == 'disconnect':
+            asyncio.run(cmd_disconnect(args))
+        elif args.cmd == 'advert':
             asyncio.run(cmd_advert(args))
         elif args.cmd == 'list':
             asyncio.run(cmd_list(args))

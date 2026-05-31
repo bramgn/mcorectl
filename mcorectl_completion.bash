@@ -10,7 +10,7 @@ _mcorectl() {
     local cur prev words cword
     _init_completion || return
 
-    local commands="list advert contacts channels channel-send status telemetry route set-path admin info stats set-txpower send recv listen rxlog neighbours trace"
+    local commands="connect disconnect list advert contacts channels channel-send status telemetry route set-path admin info stats set-txpower send recv listen rxlog neighbours trace"
 
     # Complete --port value with available serial devices
     if [[ "$prev" == "--port" ]]; then
@@ -59,6 +59,19 @@ _mcorectl() {
     done
 
     case "$cmd" in
+        connect)
+            if ((pos == 0)); then
+                # Offer already-paired BLE devices from bluetoothctl
+                local paired
+                paired=$(bluetoothctl devices Paired 2>/dev/null | awk '{print $2}')
+                COMPREPLY=($(compgen -W "$paired" -- "$cur"))
+            fi
+            ;;
+
+        disconnect)
+            COMPREPLY=($(compgen -W "--help" -- "$cur"))
+            ;;
+
         advert)
             COMPREPLY=($(compgen -W "--flood --help" -- "$cur"))
             ;;
