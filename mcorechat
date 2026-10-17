@@ -71,23 +71,36 @@ NOTE = curses.A_DIM
 FAIL = curses.A_BOLD
 
 
-def init_colors():
+C = {n: getattr(curses, 'COLOR_' + n.upper()) for n in
+     ('black', 'red', 'green', 'yellow', 'blue', 'magenta', 'cyan', 'white')}
+C['default'] = -1
+# per theme: (fg, bg) for bars/popups, selection, headers, unread, own messages, notes, failures
+THEMES = {
+    'blue': (('white', 'blue'), ('black', 'cyan'), ('cyan', 'default'), ('yellow', 'default'),
+             ('green', 'default'), ('magenta', 'default'), ('red', 'default')),
+    'green': (('black', 'green'), ('white', 'black'), ('green', 'default'), ('yellow', 'default'),
+              ('green', 'default'), ('cyan', 'default'), ('red', 'default')),
+    'amber': (('black', 'yellow'), ('yellow', 'black'), ('yellow', 'default'), ('white', 'default'),
+              ('yellow', 'default'), ('magenta', 'default'), ('red', 'default')),
+    'light': (('white', 'black'), ('white', 'blue'), ('blue', 'default'), ('red', 'default'),
+              ('green', 'default'), ('magenta', 'default'), ('red', 'default')),
+    'mono': None,
+}
+
+
+def init_colors(theme: str = 'blue'):
     global REV, SEL, HEAD, UNREAD, ME, NOTE, FAIL
-    if not curses.has_colors():
+    pairs = THEMES.get(theme)
+    if pairs is None or not curses.has_colors():
+        REV, SEL, HEAD = curses.A_REVERSE, curses.A_REVERSE | curses.A_BOLD, curses.A_BOLD | curses.A_UNDERLINE
+        UNREAD, ME, NOTE, FAIL = curses.A_BOLD, curses.A_DIM, curses.A_DIM, curses.A_BOLD
         return
     curses.start_color()
     curses.use_default_colors()
-    for n, (fg, bg) in enumerate([
-            (curses.COLOR_WHITE, curses.COLOR_BLUE),      # 1 bars / popups
-            (curses.COLOR_BLACK, curses.COLOR_CYAN),      # 2 selection
-            (curses.COLOR_CYAN, -1),                      # 3 section headers
-            (curses.COLOR_YELLOW, -1),                    # 4 unread
-            (curses.COLOR_GREEN, -1),                     # 5 own messages
-            (curses.COLOR_MAGENTA, -1),                   # 6 local notes
-            (curses.COLOR_RED, -1)], 1):                  # 7 failures
-        curses.init_pair(n, fg, bg)
+    for n, (fg, bg) in enumerate(pairs, 1):
+        curses.init_pair(n, C[fg], C[bg])
     REV = curses.color_pair(1)
-    SEL = curses.color_pair(2)
+    SEL = curses.color_pair(2) | curses.A_BOLD
     HEAD = curses.color_pair(3) | curses.A_BOLD
     UNREAD = curses.color_pair(4) | curses.A_BOLD
     ME = curses.color_pair(5)
@@ -168,6 +181,7 @@ class App:
 
     def save_config(self):
         cfg = {'show_repeaters': self._show_repeaters, 'auto_connect': self.auto_connect,
+               'theme': self.theme,
                'port': self.args.port, 'ble': self.args.ble}
         try:
             os.makedirs(os.path.dirname(CONFIG_FILE), exist_ok=True)
@@ -220,6 +234,7 @@ class App:
         cfg = load_config()
         self._show_repeaters = bool(cfg.get('show_repeaters', False))
         self.auto_connect = bool(cfg.get('auto_connect', False))
+        self.theme = cfg.get('theme') if cfg.get('theme') in THEMES else 'blue'
         self.scroll = 0                      # lines scrolled up from bottom
         self.buf = ''
         self.pos = 0
@@ -611,7 +626,7 @@ class App:
 
     # ---- settings ----------------------------------------------------------
 
-    SETTINGS = ('port', 'autoconnect', 'name', 'tx_power', 'auto_add', 'repeaters')
+    SETTINGS = ('port', 'autoconnect', 'name', 'tx_power', 'auto_add', 'repeaters', 'theme')
 
     def setting_rows(self) -> list[tuple[str, str]]:
         si = (self.mc.self_info if self.mc else None) or {}
@@ -625,11 +640,18 @@ class App:
             ('Auto add discovered contacts',
              onoff(not si['manual_add_contacts']) if 'manual_add_contacts' in si else '-'),
             ('Show repeaters in list', onoff(self.show_repeaters)),
+            ('Colour theme', self.theme),
         ]
 
     async def apply_setting(self, which: str, text: str | None = None):
         if which == 'repeaters':
             self.show_repeaters = not self.show_repeaters
+            return
+        if which == 'theme':
+            names = list(THEMES)
+            self.theme = names[(names.index(self.theme) + 1) % len(names)]
+            init_colors(self.theme)
+            self.save_config()
             return
         if which == 'autoconnect':
             self.auto_connect = not self.auto_connect
@@ -1664,7 +1686,7 @@ class App:
 
 async def ui(scr, app: App):
     curses.curs_set(1)
-    init_colors()
+    init_colors(app.theme)
     scr.nodelay(True)
     scr.keypad(True)
     while not app.quit:
