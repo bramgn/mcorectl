@@ -209,7 +209,7 @@ per-conversation history, unread counts, and send/receive for channels and priva
 ./mcorechat --ble <ADDRESS>
 ```
 
-Up/Down select a conversation, Enter sends, PgUp/PgDn scroll, `F4` flood advert,
+Up/Down select a conversation, Enter sends, PgUp/PgDn scroll, `F4` advert (zero hop or flood; `/advert zero` / `/advert flood` skip the menu),
 `F6` show/hide repeaters, `F7` log console, `F2` settings (name, TX power, auto add discovered contacts), `F3` pick a device and connect (or disconnect), `F5` reload, `^Q` quit. History is in-memory only.
 
 The app starts disconnected and never connects on its own; press `F3` to list serial ports and BLE devices and choose one. The serial port / BLE address

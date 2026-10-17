@@ -12,7 +12,7 @@ Keys:
   Tab            complete a /command; otherwise focus the message list
                  (Up/Down select a message, Enter shows details, Tab/Esc back)
   F3             choose a device to connect to (serial / BLE), or disconnect
-  F4             send flood advert
+  F4             send an advert (zero hop or flood)
   F5             reload contacts and channels from the radio
   F6             show / hide repeaters in the contact list
   F7             log console
@@ -25,7 +25,7 @@ Keys:
 
 Commands (type in the input line, /help lists them):
   /channel <name> [secret-hex]   create a channel (#name joins a public hashtag channel)
-  /quit /connect /disconnect /advert /reload /settings /repeaters /help
+  /quit /connect /disconnect /advert [zero|flood] /reload /settings /repeaters /help
   Start a message with // to send a literal leading slash.
 
 Usage:
@@ -176,6 +176,8 @@ class App:
         self.details_title = 'Message details'
         self.cmenu_open = False
         self.cmenu_sel = 0
+        self.advert_menu_open = False
+        self.advert_sel = 0
         self.ask: dict | None = None         # single-line input prompt: label/text/cb
         self.confirm_remove: dict | None = None
         self.help_open = False
@@ -673,6 +675,14 @@ class App:
             self.open_contact_menu()
             self.dirty = True
             return
+        if name in ('a', 'advert'):
+            kinds = {'': None, 'zero': False, 'zerohop': False, '0': False, 'flood': True}
+            if arg.strip().lower() not in kinds:
+                self.status = 'usage: /advert [zero|flood]'
+            else:
+                await self.advert(kinds[arg.strip().lower()])
+            self.dirty = True
+            return
         if name in ('ch', 'channel'):
             await self.create_channel(arg.strip())
             self.dirty = True
@@ -681,7 +691,6 @@ class App:
             ('q', 'quit', 'exit'): lambda: setattr(self, 'quit', True),
             ('c', 'connect'): self.pick_device,
             ('d', 'disconnect'): self.disconnect,
-            ('a', 'advert'): self.advert,
             ('r', 'reload'): self.reload,
             ('s', 'settings'): lambda: setattr(self, 'settings_open', True),
             ('repeaters',): lambda: setattr(self, 'show_repeaters', not self.show_repeaters),
@@ -710,7 +719,7 @@ class App:
         ('F1', 'this help'),
         ('F2', 'settings'),
         ('F3', 'choose device and connect / disconnect'),
-        ('F4', 'send flood advert'),
+        ('F4', 'send advert (zero hop / flood)'),
         ('F5', 'reload contacts and channels'),
         ('F6', 'show / hide repeaters'),
         ('F7', 'log console'),
@@ -731,7 +740,7 @@ class App:
         ('/contact', 'contact menu (same as F8)'),
         ('/connect  /c', 'choose device and connect'),
         ('/disconnect  /d', 'disconnect from the radio'),
-        ('/advert  /a', 'send flood advert'),
+        ('/advert  /a', 'advert menu, or /advert zero|flood'),
         ('/reload  /r', 'reload contacts and channels'),
         ('/settings  /s', 'settings'),
         ('/repeaters', 'show / hide repeaters'),
@@ -767,14 +776,51 @@ class App:
                 await self.load()
             self.status = f'connected to {self.target()}'
 
-    async def advert(self):
+    ADVERT_CHOICES = (('Zero hop (direct neighbours only)', False),
+                      ('Flood (forwarded across the mesh)', True))
+
+    async def advert(self, flood: bool | None = None):
+        """Send an advert; with flood=None, ask which kind."""
         if not self.need_radio():
             return
+        if flood is None:
+            self.advert_menu_open, self.advert_sel = True, 0
+            self.dirty = True
+            return
         async with self.radio_lock:
-            r = await self.mc.commands.send_advert(flood=True)
-        self.status = ('advert sent' if r.type != EventType.ERROR
+            r = await self.mc.commands.send_advert(flood=flood)
+        kind = 'flood' if flood else 'zero-hop'
+        self.status = (f'{kind} advert sent' if r.type != EventType.ERROR
                        else f'advert failed: {describe_error(r.payload)}')
         self.dirty = True
+
+    async def handle_advert_key(self, k):
+        if k in ('\x1b', curses.KEY_F4):
+            self.advert_menu_open = False
+        elif k == curses.KEY_UP:
+            self.advert_sel = 0
+        elif k == curses.KEY_DOWN:
+            self.advert_sel = len(self.ADVERT_CHOICES) - 1
+        elif k == '\n':
+            self.advert_menu_open = False
+            await self.advert(self.ADVERT_CHOICES[self.advert_sel][1])
+        elif isinstance(k, str) and len(k) == 1 and ord(k) in (CTRL_Q, CTRL_C):
+            self.quit = True
+        self.dirty = True
+
+    def draw_advert_menu(self, scr, h, w):
+        bw = min(w - 2, 44)
+        bh = len(self.ADVERT_CHOICES) + 3
+        y0, x0 = max(0, (h - bh) // 2), max(0, (w - bw) // 2)
+        for y in range(bh):
+            scr.addstr(y0 + y, x0, ' ' * bw, curses.A_REVERSE)
+        scr.addnstr(y0, x0 + 1, 'Send advert', bw - 2, curses.A_REVERSE | curses.A_BOLD)
+        for i, (label, _) in enumerate(self.ADVERT_CHOICES):
+            attr = curses.A_NORMAL if i == self.advert_sel else curses.A_REVERSE
+            scr.addnstr(y0 + 1 + i, x0 + 1, label.ljust(bw - 2), bw - 2, attr)
+        scr.addnstr(y0 + bh - 1, x0 + 1, 'Enter send · Esc cancel', bw - 2,
+                    curses.A_REVERSE | curses.A_DIM)
+        curses.curs_set(0)
 
     # ---- input -------------------------------------------------------------
 
@@ -816,6 +862,9 @@ class App:
             return
         if self.cmenu_open:
             await self.handle_cmenu_key(k)
+            return
+        if self.advert_menu_open:
+            await self.handle_advert_key(k)
             return
         if k == curses.KEY_F10:
             self.confirm_quit = True
@@ -1405,6 +1454,8 @@ class App:
             self.draw_details(scr, h, w)
         if self.cmenu_open:
             self.draw_cmenu(scr, h, w)
+        if self.advert_menu_open:
+            self.draw_advert_menu(scr, h, w)
         if self.ask:
             self.draw_ask(scr, h, w)
         if self.confirm_remove:
