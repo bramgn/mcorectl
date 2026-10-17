@@ -45,7 +45,7 @@ import glob
 import json
 import logging
 import textwrap
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from datetime import datetime
 
 from serial.tools import list_ports
@@ -54,6 +54,8 @@ from meshcore.events import EventType
 
 DEFAULT_PORT = '/dev/ttyUSB0'
 CONFIG_FILE = os.path.expanduser('~/.config/mcorechat/config.json')
+HISTORY_FILE = os.path.expanduser('~/.config/mcorechat/history.json')
+HISTORY_KEEP = 500          # messages kept per conversation
 SIDEBAR_W = 24
 MAX_CHANNELS = 8
 BLE_UART_UUID = '6e400001-b5a3-f393-e0a9-e50e24dcca9e'
@@ -142,6 +144,32 @@ class App:
         except OSError as e:
             log.warning('could not save config: %s', e)
 
+    @staticmethod
+    def load_history() -> dict:
+        try:
+            with open(HISTORY_FILE) as f:
+                raw = json.load(f)
+            return {(k[0], k[1]): [Msg(**m) for m in ms] for k, ms in
+                    ((json.loads(k), v) for k, v in raw.items())}
+        except (OSError, ValueError, TypeError, IndexError):
+            return {}
+
+    def save_history(self):
+        raw = {json.dumps(k): [asdict(m) for m in ms[-HISTORY_KEEP:] if m.who != '*']
+               for k, ms in self.history.items() if k}
+        raw = {k: v for k, v in raw.items() if v}
+        data = json.dumps(raw, default=lambda o: o.hex() if isinstance(o, (bytes, bytearray)) else str(o))
+        if data == self._saved_history:
+            return
+        try:
+            os.makedirs(os.path.dirname(HISTORY_FILE), exist_ok=True)
+            with open(HISTORY_FILE + '.tmp', 'w') as f:
+                f.write(data)
+            os.replace(HISTORY_FILE + '.tmp', HISTORY_FILE)
+            self._saved_history = data
+        except OSError as e:
+            log.warning('could not save history: %s', e)
+
     @status.setter
     def status(self, text: str):
         self._status = text
@@ -153,7 +181,8 @@ class App:
         self.connecting = False
         self.contact_cache: dict = {}        # last known contacts, kept after disconnect
         self.channels: list[tuple[int, str]] = []
-        self.history: dict[tuple, list[Msg]] = {}
+        self.history: dict[tuple, list[Msg]] = self.load_history()
+        self._saved_history = ''
         self.unread: dict[tuple, int] = {}
         self.selected: tuple | None = None
         cfg = load_config()
@@ -1576,9 +1605,16 @@ async def run(scr, args):
     app = App(args)
     if app.auto_connect:
         app.start_auto_connect()
+    async def autosave():
+        while True:
+            await asyncio.sleep(10)
+            app.save_history()
+    saver = asyncio.create_task(autosave())
     try:
         await ui(scr, app)
     finally:
+        saver.cancel()
+        app.save_history()
         await app.disconnect()
 
 

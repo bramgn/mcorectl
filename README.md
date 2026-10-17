@@ -240,3 +240,5 @@ serial port / BLE address by itself at launch.
 Contact menu (`F8` or `/contact`, on a selected contact or repeater): Details, Ping (zero-hop trace), Trace path
 (over the stored path and back), Discover route, Set path, Reset path and Remove contact (asks first). Ping and
 trace only get answers from repeaters / room servers.
+
+`mcorechat` keeps message history in `~/.config/mcorechat/history.json` (last 500 messages per conversation, saved every 10 s and on exit).
