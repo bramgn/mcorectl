@@ -25,7 +25,7 @@ Keys:
 
 Commands (type in the input line, /help lists them):
   /channel <name> [secret-hex]   create a channel (#name joins a public hashtag channel)
-  /quit /connect /disconnect /advert [zero|flood] /trace <hops> /reload /settings /repeaters /help
+  /quit /connect /disconnect /advert [zero|flood] /trace <hops> /log /reload /settings /repeaters /help
   Start a message with // to send a literal leading slash.
 
 Usage:
@@ -646,7 +646,7 @@ class App:
         self.dirty = True
 
     COMMAND_NAMES = ('advert', 'channel', 'connect', 'contact', 'disconnect', 'help', 'quit', 'reload',
-                     'repeaters', 'settings', 'trace')
+                     'log', 'repeaters', 'settings', 'trace')
 
     def complete(self):
         """Tab completion for /commands in the input line."""
@@ -697,6 +697,7 @@ class App:
             ('d', 'disconnect'): self.disconnect,
             ('r', 'reload'): self.reload,
             ('s', 'settings'): lambda: setattr(self, 'settings_open', True),
+            ('l', 'log', 'console'): self.open_log,
             ('repeaters',): lambda: setattr(self, 'show_repeaters', not self.show_repeaters),
             ('h', 'help', '?'): self.help,
         }
@@ -738,6 +739,9 @@ class App:
             self.status = 'trace done'
         asyncio.create_task(self.guarded(go()))
 
+    def open_log(self):
+        self.log_open, self.log_scroll = True, 0
+
     async def pick_device(self):
         if self.mc:
             await self.disconnect()
@@ -774,6 +778,7 @@ class App:
         ('/connect  /c', 'choose device and connect'),
         ('/disconnect  /d', 'disconnect from the radio'),
         ('/advert  /a', 'advert menu, or /advert zero|flood'),
+        ('/log  /console', 'log console (F7)'),
         ('/trace  /t', 'trace hops: /trace 78,64,78 or repeater names'),
         ('/reload  /r', 'reload contacts and channels'),
         ('/settings  /s', 'settings'),
