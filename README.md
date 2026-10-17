@@ -13,7 +13,7 @@ cd mcorectl
 source ~/.bashrc
 ```
 
-The script installs `meshcore` and `bleak` via pip if needed, symlinks `mcorectl` into `~/.local/bin`, and adds bash completion to `~/.bashrc`.
+The script installs `meshcore` and `bleak` via pip if needed, symlinks `mcorectl` and `mcorechat` (the ncurses client, see below) into `~/.local/bin`, and adds bash completion to `~/.bashrc`.
 
 A MeshCore companion radio node connected via USB serial (default `/dev/ttyUSB0`).
 
@@ -198,3 +198,45 @@ Completes: subcommand names, per-subcommand flags, `/dev/tty*` devices for `--po
 | `mcorectl` | Main CLI tool |
 | `mcorectl_completion.bash` | Bash completion script |
 | `install.sh` | Installer: symlinks binary, installs Python deps, sets up completion |
+
+## mcorechat
+
+`mcorechat` is a simple ncurses chat client built on the same library: channel list, contact list,
+per-conversation history, unread counts, and send/receive for channels and private messages.
+
+```bash
+./mcorechat                  # serial, /dev/ttyUSB0 (or --port / $MCORECHAT_PORT)
+./mcorechat --ble <ADDRESS>
+```
+
+Up/Down select a conversation, Enter sends, PgUp/PgDn scroll, `F4` flood advert,
+`F6` show/hide repeaters, `F7` log console, `F2` settings (name, TX power, auto add discovered contacts), `F3` pick a device and connect (or disconnect), `F5` reload, `^Q` quit. History is in-memory only.
+
+The app starts disconnected and never connects on its own; press `F3` to list serial ports and BLE devices and choose one. The serial port / BLE address
+can be changed in the settings screen (`F2`) before connecting.
+
+Slash commands work in the input line: `/quit` (`/q`), `/connect`, `/disconnect`, `/advert`, `/reload`,
+`/settings`, `/repeaters`, `/help`. `F1` or `/help` shows the full key and command list; `F10` quits.
+`Tab` completes a command (listing the matches when ambiguous). Start a message with `//` to send a literal leading `/`.
+
+The input line understands the usual readline keys (`^A ^E ^B ^F ^D ^U ^K ^W ^Y`); `^P`/`^N` switch conversation.
+Log output from the radio library is kept off the screen and shown in the `F7` log console instead.
+
+Channels: `/channel #name` joins a public hashtag channel (key derived from the name, like other MeshCore apps).
+`/channel name` creates a private channel with a random key and prints the secret in the conversation so you can
+share it; `/channel name <32 hex chars>` joins a private channel with a known key. The channel goes into the first
+free radio slot (8 max) and is selected.
+
+App-side preferences (show repeaters, last used serial port / BLE address) are saved in
+`~/.config/mcorechat/config.json`. Radio-side settings stay on the device.
+
+Message details: press `Tab` (on an empty line or one not starting with `/`) to move focus to the message list, use
+Up/Down/PgUp/PgDn to highlight a message and `Enter` to see sender, key, times, route, SNR/RSSI, delivery status and
+the full text. `Tab` or `Esc` returns to the input; typing a character does too.
+
+Settings (`F2`) also has "Connect on startup" (off by default): when on, `mcorechat` connects to the saved
+serial port / BLE address by itself at launch.
+
+Contact menu (`F8` or `/contact`, on a selected contact or repeater): Details, Ping (zero-hop trace), Trace path
+(over the stored path and back), Discover route, Set path, Reset path and Remove contact (asks first). Ping and
+trace only get answers from repeaters / room servers.

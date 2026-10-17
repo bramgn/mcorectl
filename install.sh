@@ -5,7 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BIN_DIR="$HOME/.local/bin"
 BASHRC="$HOME/.bashrc"
 
-echo "Installing mcorectl..."
+echo "Installing mcorectl and mcorechat..."
 
 # Python dependencies
 if ! python3 -c "import meshcore" 2>/dev/null; then
@@ -19,8 +19,10 @@ fi
 
 # Symlink
 mkdir -p "$BIN_DIR"
-ln -sf "$SCRIPT_DIR/mcorectl" "$BIN_DIR/mcorectl"
-chmod +x "$SCRIPT_DIR/mcorectl"
+for tool in mcorectl mcorechat; do
+    ln -sf "$SCRIPT_DIR/$tool" "$BIN_DIR/$tool"
+    chmod +x "$SCRIPT_DIR/$tool"
+done
 
 # PATH check
 if [[ ":$PATH:" != *":$BIN_DIR:"* ]]; then
