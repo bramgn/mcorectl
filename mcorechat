@@ -25,7 +25,7 @@ Keys:
 
 Commands (type in the input line, /help lists them):
   /channel <name> [secret-hex]   create a channel (#name joins a public hashtag channel)
-  /quit /connect /disconnect /advert [zero|flood] /trace <hops> /log /reload /settings /repeaters /help
+  /quit /connect /disconnect /advert [zero|flood] /trace <hops> /log /rxlog /reload /settings /repeaters /help
   Start a message with // to send a literal leading slash.
 
 Usage:
@@ -245,6 +245,8 @@ class App:
         self.help_scroll = 0
         self.log_open = False
         self.log_scroll = 0
+        self.log_kind = 'log'                # 'log' (F7) or 'rx' (F9) share one viewer
+        self.rx_lines: collections.deque[str] = collections.deque(maxlen=LOG_LINES)
         self.radio_lock = asyncio.Lock()     # the library can't tell concurrent replies apart
         self.kill = ''                       # readline kill ring (one slot)
         self.confirm_quit = False
@@ -414,6 +416,7 @@ class App:
             mc.subscribe(EventType.CONTACT_MSG_RECV, self.on_contact_msg)
             mc.subscribe(EventType.CHANNEL_MSG_RECV, self.on_chan_msg)
             mc.subscribe(EventType.ACK, self.on_ack)
+            mc.subscribe(EventType.RX_LOG_DATA, self.on_rx_log)
             for ev in (EventType.NEW_CONTACT, EventType.ADVERTISEMENT, EventType.PATH_UPDATE):
                 mc.subscribe(ev, self.on_contacts_changed)
             await self.log_autoadd_config()
@@ -708,7 +711,7 @@ class App:
         self.dirty = True
 
     COMMAND_NAMES = ('advert', 'channel', 'connect', 'contact', 'disconnect', 'help', 'quit', 'reload',
-                     'log', 'repeaters', 'settings', 'trace')
+                     'log', 'repeaters', 'rxlog', 'settings', 'trace')
 
     def complete(self):
         """Tab completion for /commands in the input line."""
@@ -760,6 +763,7 @@ class App:
             ('r', 'reload'): self.reload,
             ('s', 'settings'): lambda: setattr(self, 'settings_open', True),
             ('l', 'log', 'console'): self.open_log,
+            ('rx', 'rxlog'): lambda: self.open_log('rx'),
             ('repeaters',): lambda: setattr(self, 'show_repeaters', not self.show_repeaters),
             ('h', 'help', '?'): self.help,
         }
@@ -801,8 +805,8 @@ class App:
             self.status = 'trace done'
         asyncio.create_task(self.guarded(go()))
 
-    def open_log(self):
-        self.log_open, self.log_scroll = True, 0
+    def open_log(self, kind='log'):
+        self.log_open, self.log_scroll, self.log_kind = True, 0, kind
 
     async def drain_queue(self, mc):
         """Fetch everything the radio queued while we were away (the library fetches only one)."""
@@ -835,6 +839,7 @@ class App:
         ('F5', 'reload contacts and channels'),
         ('F6', 'show / hide repeaters'),
         ('F7', 'log console'),
+        ('F9', 'RX log (every packet heard)'),
         ('F8', 'contact menu: details, ping, trace, path, remove'),
         ('F10', 'quit (asks to confirm)'),
         ('^Q, ^C', 'quit immediately'),
@@ -854,6 +859,7 @@ class App:
         ('/disconnect  /d', 'disconnect from the radio'),
         ('/advert  /a', 'advert menu, or /advert zero|flood'),
         ('/log  /console', 'log console (F7)'),
+        ('/rxlog', 'RX log: every packet heard (F9)'),
         ('/trace  /t', 'trace hops: /trace 78,64,78 or repeater names'),
         ('/reload  /r', 'reload contacts and channels'),
         ('/settings  /s', 'settings'),
@@ -995,10 +1001,11 @@ class App:
         if self.log_open:
             self.handle_log_key(k)
             return
-        if k == curses.KEY_F7:
-            self.log_open, self.log_scroll = True, 0
-            self.dirty = True
-            return
+        for fkey, kind in ((curses.KEY_F7, 'log'), (curses.KEY_F9, 'rx')):
+            if k == fkey:
+                self.open_log(kind)
+                self.dirty = True
+                return
         if self.picker_open:
             await self.handle_picker_key(k)
             return
@@ -1423,9 +1430,35 @@ class App:
                     REV | curses.A_DIM)
         curses.curs_set(0)
 
+    def on_rx_log(self, event):
+        p = event.payload
+        ptype = p.get('payload_typename', '?')
+        path = p.get('path', '')
+        hops = []
+        if ptype == 'TRACE':        # path bytes are per-hop SNR, quarter-dB steps
+            hops = [f'{(int(path[i:i + 2], 16) - (256 if int(path[i:i + 2], 16) > 127 else 0)) / 4:.2f}dB'
+                    for i in range(0, len(path), 2)]
+        elif ptype != 'ACK':
+            hops = [self.hop_name(path[i:i + 2]) for i in range(0, len(path), 2)]
+        extra = ''
+        if ptype == 'ADVERT':
+            key = p.get('adv_key', '')
+            c = self.mc.get_contact_by_key_prefix(key[:8]) if self.mc and key else None
+            extra = f'  from {p.get("adv_name") or (c or {}).get("adv_name") or key[:8] or "?"}'
+        elif ptype == 'ACK':
+            extra = f'  ack {path}'
+        if hops:
+            extra += '  path ' + ' > '.join(hops)
+        self.rx_lines.append(f'{datetime.now():%H:%M:%S} {ptype:<10} rssi {p.get("rssi", "?"):>4} '
+                             f'snr {p.get("snr", "?"):>5}{extra}')
+        if self.log_open and self.log_kind == 'rx':
+            self.dirty = True
+
     def handle_log_key(self, k):
-        if k in ('\x1b', 'q', curses.KEY_F7):
+        if k in ('\x1b', 'q') or k == (curses.KEY_F7 if self.log_kind == 'log' else curses.KEY_F9):
             self.log_open = False
+        elif k in (curses.KEY_F7, curses.KEY_F9):
+            self.open_log('log' if k == curses.KEY_F7 else 'rx')
         elif k == curses.KEY_UP:
             self.log_scroll += 1
         elif k == curses.KEY_DOWN:
@@ -1437,23 +1470,26 @@ class App:
         elif k in (curses.KEY_END, 'G'):
             self.log_scroll = 0
         elif k == curses.KEY_HOME:
-            self.log_scroll = len(LOG.lines)
+            self.log_scroll = 10 ** 9
         elif isinstance(k, str) and len(k) == 1 and ord(k) in (CTRL_Q, CTRL_C):
             self.quit = True
         self.dirty = True
 
     def draw_log(self, scr, h, w):
         scr.erase()
+        rx = self.log_kind == 'rx'
         lines = []
-        for l in LOG.lines:
+        for l in (self.rx_lines if rx else LOG.lines):
             lines += textwrap.wrap(l, w - 1, subsequent_indent='    ') or ['']
         body = h - 2
         self.log_scroll = min(self.log_scroll, max(0, len(lines) - body))
         end = len(lines) - self.log_scroll
         for y, l in enumerate(lines[max(0, end - body):end]):
             scr.addnstr(1 + y, 0, l, w - 1)
-        scr.addnstr(0, 0, ' Log'.ljust(w), w - 1, REV | curses.A_BOLD)
-        scr.addnstr(h - 1, 0, ' Up/Down/PgUp/PgDn scroll  End latest  F7/Esc/q close'.ljust(w),
+        title = ' RX log — every packet the radio hears' if rx else ' Log'
+        scr.addnstr(0, 0, title.ljust(w), w - 1, REV | curses.A_BOLD)
+        other = 'F7 log' if rx else 'F9 RX log'
+        scr.addnstr(h - 1, 0, f' Up/Down/PgUp/PgDn scroll  End latest  {other}  Esc/q close'.ljust(w),
                     w - 1, REV)
         curses.curs_set(0)
         scr.refresh()
@@ -1554,7 +1590,7 @@ class App:
         scr.addnstr(h - 2, 0, prompt + self.buf[start:start + vis], w - 1)
         keys = [('F1', 'Help'), ('F2', 'Settings'),
                 ('F3', 'Disconnect' if self.mc else 'Connect'), ('F4', 'Advert'),
-                ('F5', 'Reload'), ('F6', 'Repeaters'), ('F7', 'Log'), ('F8', 'Contact'), ('F10', 'Quit')]
+                ('F5', 'Reload'), ('F6', 'Repeaters'), ('F7', 'Log'), ('F8', 'Contact'), ('F9', 'RX log'), ('F10', 'Quit')]
         status = ' ' + '  '.join(f'{k} {v}' for k, v in keys)
         scr.addnstr(h - 1, 0, status.ljust(w), w - 1, REV)
         scr.move(h - 2, min(w - 1, len(prompt) + self.pos - start))
