@@ -387,6 +387,7 @@ class App:
             await self.log_autoadd_config()
             mc.subscribe(EventType.DISCONNECTED, self.on_disconnected)
             await mc.start_auto_message_fetching()
+            await self.drain_queue(mc)
             self.save_config()
             self.status = f'connected to {self.target()}'
         except BaseException as e:
@@ -770,6 +771,19 @@ class App:
 
     def open_log(self):
         self.log_open, self.log_scroll = True, 0
+
+    async def drain_queue(self, mc):
+        """Fetch everything the radio queued while we were away (the library fetches only one)."""
+        n = 0
+        for _ in range(200):
+            async with self.radio_lock:
+                r = await mc.commands.get_msg()
+            if r.type in (EventType.NO_MORE_MSGS, EventType.ERROR):
+                break
+            n += 1
+            await asyncio.sleep(0.05)
+        if n:
+            log.info('fetched %d queued message(s)', n)
 
     async def pick_device(self):
         if self.mc:
