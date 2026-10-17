@@ -215,7 +215,7 @@ Up/Down select a conversation, Enter sends, PgUp/PgDn scroll, `F4` advert (zero 
 The app starts disconnected and never connects on its own; press `F3` to list serial ports and BLE devices and choose one. The serial port / BLE address
 can be changed in the settings screen (`F2`) before connecting.
 
-Slash commands work in the input line: `/quit` (`/q`), `/connect`, `/disconnect`, `/advert`, `/reload`,
+Slash commands work in the input line: `/quit` (`/q`), `/connect`, `/disconnect`, `/advert`, `/trace 78,64,78` (hex hashes or repeater names), `/reload`,
 `/settings`, `/repeaters`, `/help`. `F1` or `/help` shows the full key and command list; `F10` quits.
 `Tab` completes a command (listing the matches when ambiguous). Start a message with `//` to send a literal leading `/`.
 

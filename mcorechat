@@ -25,7 +25,7 @@ Keys:
 
 Commands (type in the input line, /help lists them):
   /channel <name> [secret-hex]   create a channel (#name joins a public hashtag channel)
-  /quit /connect /disconnect /advert [zero|flood] /reload /settings /repeaters /help
+  /quit /connect /disconnect /advert [zero|flood] /trace <hops> /reload /settings /repeaters /help
   Start a message with // to send a literal leading slash.
 
 Usage:
@@ -646,7 +646,7 @@ class App:
         self.dirty = True
 
     COMMAND_NAMES = ('advert', 'channel', 'connect', 'contact', 'disconnect', 'help', 'quit', 'reload',
-                     'repeaters', 'settings')
+                     'repeaters', 'settings', 'trace')
 
     def complete(self):
         """Tab completion for /commands in the input line."""
@@ -683,6 +683,10 @@ class App:
                 await self.advert(kinds[arg.strip().lower()])
             self.dirty = True
             return
+        if name in ('t', 'trace'):
+            await self.trace_command(arg)
+            self.dirty = True
+            return
         if name in ('ch', 'channel'):
             await self.create_channel(arg.strip())
             self.dirty = True
@@ -704,6 +708,35 @@ class App:
                 self.dirty = True
                 return
         self.status = f'unknown command /{name} (try /help)'
+
+    async def trace_command(self, arg: str):
+        """/trace hop,hop,... where a hop is a 1-byte hex hash or a repeater name."""
+        toks = [t for t in arg.replace(',', ' ').split() if t]
+        if not toks:
+            self.status = 'usage: /trace <hop,hop,...>  (hex hash or repeater name)'
+            return
+        if not self.need_radio():
+            return
+        route = []
+        for t in toks:
+            if len(t) == 2 and all(ch in '0123456789abcdefABCDEF' for ch in t):
+                route.append(t.lower())
+                continue
+            hits = [c for c in self.contacts().values()
+                    if c.get('type') in (2, 3) and t.lower() in c.get('adv_name', '').lower()]
+            if len(hits) != 1:
+                self.status = (f'no repeater matches "{t}"' if not hits
+                               else f'"{t}" is ambiguous ({len(hits)} repeaters)')
+                return
+            route.append(hits[0]['public_key'][:2])
+        self.status = 'tracing...'
+        self.dirty = True
+
+        async def go():
+            lines = [f'path: {" > ".join(route)}', ''] + await self.run_trace(route)
+            self.show('Trace', lines)
+            self.status = 'trace done'
+        asyncio.create_task(self.guarded(go()))
 
     async def pick_device(self):
         if self.mc:
@@ -741,6 +774,7 @@ class App:
         ('/connect  /c', 'choose device and connect'),
         ('/disconnect  /d', 'disconnect from the radio'),
         ('/advert  /a', 'advert menu, or /advert zero|flood'),
+        ('/trace  /t', 'trace hops: /trace 78,64,78 or repeater names'),
         ('/reload  /r', 'reload contacts and channels'),
         ('/settings  /s', 'settings'),
         ('/repeaters', 'show / hide repeaters'),
