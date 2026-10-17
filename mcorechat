@@ -655,7 +655,7 @@ class App:
             self.set_sel = max(0, self.set_sel - 1)
         elif k == curses.KEY_DOWN:
             self.set_sel = min(len(self.SETTINGS) - 1, self.set_sel + 1)
-        elif k == '\n':
+        elif k in ('\n', ' '):
             if which in ('port', 'name', 'tx_power'):
                 if which != 'port' and not self.need_radio():
                     return
