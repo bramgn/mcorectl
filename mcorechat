@@ -61,6 +61,38 @@ MAX_CHANNELS = 8
 BLE_UART_UUID = '6e400001-b5a3-f393-e0a9-e50e24dcca9e'
 NODE_TYPES = {1: 'client', 2: 'repeater', 3: 'room'}
 CTRL_Q, CTRL_C = 17, 3
+# display attributes; init_colors() swaps in colours when the terminal has them
+REV = curses.A_REVERSE                   # bars and popups
+SEL = curses.A_REVERSE | curses.A_BOLD   # highlighted row
+HEAD = curses.A_BOLD | curses.A_UNDERLINE
+UNREAD = curses.A_BOLD
+ME = curses.A_DIM
+NOTE = curses.A_DIM
+FAIL = curses.A_BOLD
+
+
+def init_colors():
+    global REV, SEL, HEAD, UNREAD, ME, NOTE, FAIL
+    if not curses.has_colors():
+        return
+    curses.start_color()
+    curses.use_default_colors()
+    for n, (fg, bg) in enumerate([
+            (curses.COLOR_WHITE, curses.COLOR_BLUE),      # 1 bars / popups
+            (curses.COLOR_BLACK, curses.COLOR_CYAN),      # 2 selection
+            (curses.COLOR_CYAN, -1),                      # 3 section headers
+            (curses.COLOR_YELLOW, -1),                    # 4 unread
+            (curses.COLOR_GREEN, -1),                     # 5 own messages
+            (curses.COLOR_MAGENTA, -1),                   # 6 local notes
+            (curses.COLOR_RED, -1)], 1):                  # 7 failures
+        curses.init_pair(n, fg, bg)
+    REV = curses.color_pair(1)
+    SEL = curses.color_pair(2)
+    HEAD = curses.color_pair(3) | curses.A_BOLD
+    UNREAD = curses.color_pair(4) | curses.A_BOLD
+    ME = curses.color_pair(5)
+    NOTE = curses.color_pair(6)
+    FAIL = curses.color_pair(7) | curses.A_BOLD
 LOG_LINES = 1000
 
 
@@ -840,15 +872,15 @@ class App:
         bh = len(rows) + 3
         y0, x0 = max(0, (h - bh) // 2), max(0, (w - bw) // 2)
         for y in range(bh):
-            scr.addstr(y0 + y, x0, ' ' * bw, curses.A_REVERSE)
-        scr.addnstr(y0, x0 + 1, 'Help', bw - 2, curses.A_REVERSE | curses.A_BOLD)
+            scr.addstr(y0 + y, x0, ' ' * bw, REV)
+        scr.addnstr(y0, x0 + 1, 'Help', bw - 2, REV | curses.A_BOLD)
         for i, (a, b) in enumerate(rows):
             if a and not b:
-                scr.addnstr(y0 + 1 + i, x0 + 1, a, bw - 2, curses.A_REVERSE | curses.A_UNDERLINE)
+                scr.addnstr(y0 + 1 + i, x0 + 1, a, bw - 2, REV | curses.A_UNDERLINE)
             else:
-                scr.addnstr(y0 + 1 + i, x0 + 1, f'{a:<24}{b}', bw - 2, curses.A_REVERSE)
+                scr.addnstr(y0 + 1 + i, x0 + 1, f'{a:<24}{b}', bw - 2, REV)
         scr.addnstr(y0 + bh - 1, x0 + 1, 'Up/Down scroll · any other key closes' if len(self.HELP) > room
-                    else 'press any key to close', bw - 2, curses.A_REVERSE | curses.A_DIM)
+                    else 'press any key to close', bw - 2, REV | curses.A_DIM)
         curses.curs_set(0)
 
     async def reload(self):
@@ -895,13 +927,13 @@ class App:
         bh = len(self.ADVERT_CHOICES) + 3
         y0, x0 = max(0, (h - bh) // 2), max(0, (w - bw) // 2)
         for y in range(bh):
-            scr.addstr(y0 + y, x0, ' ' * bw, curses.A_REVERSE)
-        scr.addnstr(y0, x0 + 1, 'Send advert', bw - 2, curses.A_REVERSE | curses.A_BOLD)
+            scr.addstr(y0 + y, x0, ' ' * bw, REV)
+        scr.addnstr(y0, x0 + 1, 'Send advert', bw - 2, REV | curses.A_BOLD)
         for i, (label, _) in enumerate(self.ADVERT_CHOICES):
-            attr = curses.A_NORMAL if i == self.advert_sel else curses.A_REVERSE
+            attr = SEL if i == self.advert_sel else REV
             scr.addnstr(y0 + 1 + i, x0 + 1, label.ljust(bw - 2), bw - 2, attr)
         scr.addnstr(y0 + bh - 1, x0 + 1, 'Enter send · Esc cancel', bw - 2,
-                    curses.A_REVERSE | curses.A_DIM)
+                    REV | curses.A_DIM)
         curses.curs_set(0)
 
     # ---- input -------------------------------------------------------------
@@ -1274,13 +1306,13 @@ class App:
         bh = len(self.CONTACT_ACTIONS) + 3
         y0, x0 = max(0, (h - bh) // 2), max(0, (w - bw) // 2)
         for y in range(bh):
-            scr.addstr(y0 + y, x0, ' ' * bw, curses.A_REVERSE)
-        scr.addnstr(y0, x0 + 1, c.get('adv_name', 'Contact'), bw - 2, curses.A_REVERSE | curses.A_BOLD)
+            scr.addstr(y0 + y, x0, ' ' * bw, REV)
+        scr.addnstr(y0, x0 + 1, c.get('adv_name', 'Contact'), bw - 2, REV | curses.A_BOLD)
         for i, (label, _) in enumerate(self.CONTACT_ACTIONS):
-            attr = curses.A_NORMAL if i == self.cmenu_sel else curses.A_REVERSE
+            attr = SEL if i == self.cmenu_sel else REV
             scr.addnstr(y0 + 1 + i, x0 + 1, label.ljust(bw - 2), bw - 2, attr)
         scr.addnstr(y0 + bh - 1, x0 + 1, 'Enter select · Esc close', bw - 2,
-                    curses.A_REVERSE | curses.A_DIM)
+                    REV | curses.A_DIM)
         curses.curs_set(0)
 
     def draw_ask(self, scr, h, w):
@@ -1288,10 +1320,10 @@ class App:
         bw = min(w - 2, 70)
         y0, x0 = max(0, h // 2 - 2), max(0, (w - bw) // 2)
         for y in range(4):
-            scr.addstr(y0 + y, x0, ' ' * bw, curses.A_REVERSE)
-        scr.addnstr(y0, x0 + 1, a['label'], bw - 2, curses.A_REVERSE | curses.A_BOLD)
-        scr.addnstr(y0 + 1, x0 + 1, (a['text'] + '_').ljust(bw - 2), bw - 2, curses.A_REVERSE)
-        scr.addnstr(y0 + 3, x0 + 1, 'Enter apply · Esc cancel', bw - 2, curses.A_REVERSE | curses.A_DIM)
+            scr.addstr(y0 + y, x0, ' ' * bw, REV)
+        scr.addnstr(y0, x0 + 1, a['label'], bw - 2, REV | curses.A_BOLD)
+        scr.addnstr(y0 + 1, x0 + 1, (a['text'] + '_').ljust(bw - 2), bw - 2, REV)
+        scr.addnstr(y0 + 3, x0 + 1, 'Enter apply · Esc cancel', bw - 2, REV | curses.A_DIM)
         curses.curs_set(0)
 
     # ---- message selection / details -------------------------------------
@@ -1383,12 +1415,12 @@ class App:
         bh = len(rows) + 3
         y0, x0 = max(0, (h - bh) // 2), max(0, (w - bw) // 2)
         for y in range(bh):
-            scr.addstr(y0 + y, x0, ' ' * bw, curses.A_REVERSE)
-        scr.addnstr(y0, x0 + 1, self.details_title, bw - 2, curses.A_REVERSE | curses.A_BOLD)
+            scr.addstr(y0 + y, x0, ' ' * bw, REV)
+        scr.addnstr(y0, x0 + 1, self.details_title, bw - 2, REV | curses.A_BOLD)
         for i, line in enumerate(rows):
-            scr.addnstr(y0 + 1 + i, x0 + 1, line, bw - 2, curses.A_REVERSE)
+            scr.addnstr(y0 + 1 + i, x0 + 1, line, bw - 2, REV)
         scr.addnstr(y0 + bh - 1, x0 + 1, 'press any key to close', bw - 2,
-                    curses.A_REVERSE | curses.A_DIM)
+                    REV | curses.A_DIM)
         curses.curs_set(0)
 
     def handle_log_key(self, k):
@@ -1420,9 +1452,9 @@ class App:
         end = len(lines) - self.log_scroll
         for y, l in enumerate(lines[max(0, end - body):end]):
             scr.addnstr(1 + y, 0, l, w - 1)
-        scr.addnstr(0, 0, ' Log'.ljust(w), w - 1, curses.A_REVERSE | curses.A_BOLD)
+        scr.addnstr(0, 0, ' Log'.ljust(w), w - 1, REV | curses.A_BOLD)
         scr.addnstr(h - 1, 0, ' Up/Down/PgUp/PgDn scroll  End latest  F7/Esc/q close'.ljust(w),
-                    w - 1, curses.A_REVERSE)
+                    w - 1, REV)
         curses.curs_set(0)
         scr.refresh()
 
@@ -1434,7 +1466,8 @@ class App:
             mark = {'sent': ' ·', 'acked': ' ✓', 'failed': ' ✗'}.get(m.status, '')
             body = f'{m.who}: {m.text}' if m.who else m.text
             prefix = f'{hhmm(m.ts)} '
-            attr = curses.A_DIM if m.mine else curses.A_NORMAL
+            attr = (NOTE if m.who == '*' else FAIL if m.status == 'failed'
+                    else ME if m.mine else curses.A_NORMAL)
             wrapped = textwrap.wrap(body + mark, max(10, width - len(prefix)),
                                     subsequent_indent='  ') or ['']
             for i, w in enumerate(wrapped):
@@ -1469,14 +1502,14 @@ class App:
         top = max(0, min(sel_row - body_h // 2, len(rows) - body_h))
         for y, (label, key) in enumerate(rows[top:top + body_h]):
             if key is None:
-                scr.addnstr(1 + y, 0, label, sw - 1, curses.A_BOLD | curses.A_UNDERLINE)
+                scr.addnstr(1 + y, 0, label, sw - 1, HEAD)
                 continue
             u = self.unread.get(key, 0)
             tail = f' {u}' if u else ''
             text = ' ' + label[:sw - 3 - len(tail)]
             text = text.ljust(sw - 1 - len(tail)) + tail
-            attr = curses.A_REVERSE if key == self.selected else (
-                curses.A_BOLD if u else curses.A_NORMAL)
+            attr = SEL if key == self.selected else (
+                UNREAD if u else curses.A_NORMAL)
             scr.addnstr(1 + y, 0, text, sw - 1, attr)
         for y in range(1, h - 2):
             scr.addstr(y, sw, '│')
@@ -1486,12 +1519,12 @@ class App:
         title = f' mcorechat — {si.get("name", "disconnected")} '
         if self.selected:
             title += f'— {self.name_for(self.selected)} '
-        scr.addnstr(0, 0, ' ' * w, w - 1, curses.A_REVERSE)
-        scr.addnstr(0, 0, title, w - 1, curses.A_REVERSE)
+        scr.addnstr(0, 0, ' ' * w, w - 1, REV)
+        scr.addnstr(0, 0, title, w - 1, REV)
         room = w - 1 - len(title) - 2
         if room > 8 and self.status:
             msg = self.status if len(self.status) <= room else self.status[:room - 1] + '…'
-            scr.addnstr(0, w - 1 - len(msg) - 1, msg, room, curses.A_REVERSE)
+            scr.addnstr(0, w - 1 - len(msg) - 1, msg, room, REV)
 
         # messages
         lines = self.render_lines(mw)
@@ -1509,7 +1542,7 @@ class App:
         end = len(lines) - self.scroll
         for y, (text, attr, n) in enumerate(lines[max(0, end - body_h):end]):
             if self.focus == 'msgs' and n == self.msg_sel:
-                attr = curses.A_REVERSE
+                attr = SEL
             scr.addnstr(1 + y, sw + 1, text, mw, attr)
         if self.scroll:
             scr.addnstr(body_h, sw + 1, f'-- {self.scroll} lines up (PgDn) --', mw, curses.A_DIM)
@@ -1523,7 +1556,7 @@ class App:
                 ('F3', 'Disconnect' if self.mc else 'Connect'), ('F4', 'Advert'),
                 ('F5', 'Reload'), ('F6', 'Repeaters'), ('F7', 'Log'), ('F8', 'Contact'), ('F10', 'Quit')]
         status = ' ' + '  '.join(f'{k} {v}' for k, v in keys)
-        scr.addnstr(h - 1, 0, status.ljust(w), w - 1, curses.A_REVERSE)
+        scr.addnstr(h - 1, 0, status.ljust(w), w - 1, REV)
         scr.move(h - 2, min(w - 1, len(prompt) + self.pos - start))
         curses.curs_set(0 if self.focus == 'msgs' else 1)
         if self.settings_open:
@@ -1544,12 +1577,12 @@ class App:
             c = self.confirm_remove['contact']
             msg = f' Remove {c.get("adv_name", "?")}?  [y] yes  [n/Esc] no '
             y0, x0 = h // 2, max(0, (w - len(msg)) // 2)
-            scr.addnstr(y0, x0, msg, w - 1 - x0, curses.A_REVERSE | curses.A_BOLD)
+            scr.addnstr(y0, x0, msg, w - 1 - x0, REV | curses.A_BOLD)
             curses.curs_set(0)
         if self.confirm_quit:
             msg = ' Quit mcorechat?  [y/Enter] yes  [n/Esc] no '
             y0, x0 = h // 2, max(0, (w - len(msg)) // 2)
-            scr.addnstr(y0, x0, msg, w - 1 - x0, curses.A_REVERSE | curses.A_BOLD)
+            scr.addnstr(y0, x0, msg, w - 1 - x0, REV | curses.A_BOLD)
             curses.curs_set(0)
         scr.refresh()
 
@@ -1559,18 +1592,18 @@ class App:
         bh = len(items) + 4 + (1 if not items or self.picker_note else 0)
         y0, x0 = max(0, (h - bh) // 2), max(0, (w - bw) // 2)
         for y in range(bh):
-            scr.addstr(y0 + y, x0, ' ' * bw, curses.A_REVERSE)
-        scr.addnstr(y0, x0 + 1, 'Connect to device', bw - 2, curses.A_REVERSE | curses.A_BOLD)
+            scr.addstr(y0 + y, x0, ' ' * bw, REV)
+        scr.addnstr(y0, x0 + 1, 'Connect to device', bw - 2, REV | curses.A_BOLD)
         y = y0 + 1
         for i, (_, _, label) in enumerate(items):
-            attr = curses.A_NORMAL if i == self.picker_sel else curses.A_REVERSE
+            attr = SEL if i == self.picker_sel else REV
             scr.addnstr(y, x0 + 1, label.ljust(bw - 2), bw - 2, attr)
             y += 1
         note = self.picker_note or ('' if items else 'no devices found')
         if note:
-            scr.addnstr(y, x0 + 1, note, bw - 2, curses.A_REVERSE | curses.A_DIM)
+            scr.addnstr(y, x0 + 1, note, bw - 2, REV | curses.A_DIM)
         scr.addnstr(y0 + bh - 1, x0 + 1, 'Enter connect · r rescan · Esc cancel', bw - 2,
-                    curses.A_REVERSE | curses.A_DIM)
+                    REV | curses.A_DIM)
         curses.curs_set(0)
 
     def draw_settings(self, scr, h, w):
@@ -1579,23 +1612,23 @@ class App:
         bh = len(rows) + 4
         y0, x0 = max(0, (h - bh) // 2), max(0, (w - bw) // 2)
         for y in range(bh):
-            scr.addstr(y0 + y, x0, ' ' * bw, curses.A_REVERSE)
-        scr.addnstr(y0, x0 + 1, 'Settings', bw - 2, curses.A_REVERSE | curses.A_BOLD)
+            scr.addstr(y0 + y, x0, ' ' * bw, REV)
+        scr.addnstr(y0, x0 + 1, 'Settings', bw - 2, REV | curses.A_BOLD)
         for i, (label, val) in enumerate(rows):
             if i == self.set_sel and self.set_edit is not None:
                 val = self.set_edit + '_'
             line = f'{label:<31}{val}'
-            attr = curses.A_NORMAL if i == self.set_sel else curses.A_REVERSE
+            attr = SEL if i == self.set_sel else REV
             scr.addnstr(y0 + 1 + i, x0 + 1, line.ljust(bw - 2), bw - 2, attr)
         hint = 'Enter save · Esc cancel' if self.set_edit is not None else \
             'Enter change · Esc close'
-        scr.addnstr(y0 + bh - 1, x0 + 1, hint, bw - 2, curses.A_REVERSE | curses.A_DIM)
+        scr.addnstr(y0 + bh - 1, x0 + 1, hint, bw - 2, REV | curses.A_DIM)
         curses.curs_set(0)
 
 
 async def ui(scr, app: App):
     curses.curs_set(1)
-    curses.use_default_colors()
+    init_colors()
     scr.nodelay(True)
     scr.keypad(True)
     while not app.quit:
