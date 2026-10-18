@@ -138,12 +138,16 @@ class App(ConnectionMixin, MessagingMixin, SettingsMixin, ContactsMixin, Channel
             fav = key[1] in self.favorites
             if is_rep and not self.show_repeaters and not fav and key not in self.history:
                 continue
-            tag = '★' if fav else '*' if is_rep else ''
+            tag = '★' if fav else ''
             out.append((key, tag + (c.get('adv_name') or c['public_key'][:8])))
         for key in self.history:
             if key and key[0] == 'd' and key not in known:
                 out.append((key, key[1][:8]))
         return out
+
+    def is_repeater(self, key: tuple) -> bool:
+        return key[0] == 'd' and any(c.get('type') == 2 for k, c in self.contacts().items()
+                                     if k.startswith(key[1]))
 
     def entries(self) -> list[tuple[tuple, str]]:
         ch = [(('c', i), n) for i, n in self.channels]

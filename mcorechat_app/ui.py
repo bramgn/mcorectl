@@ -221,7 +221,7 @@ class UiMixin:
             text = ' ' + label[:sw - 3 - len(tail)]
             text = text.ljust(sw - 1 - len(tail)) + tail
             attr = theme.SEL if key == self.selected else (
-                theme.UNREAD if u else curses.A_NORMAL)
+                theme.UNREAD if u else curses.A_DIM if self.is_repeater(key) else curses.A_NORMAL)
             scr.addnstr(1 + y, 0, text, sw - 1, attr)
         for y in range(1, h - 2):
             scr.addstr(y, sw, '│')
