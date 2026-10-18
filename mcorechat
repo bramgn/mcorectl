@@ -282,6 +282,7 @@ class App:
         self.log_open = False
         self.log_scroll = 0
         self.log_kind = 'log'                # 'log' (F7) or 'rx' (F9) share one viewer
+        self.signal: dict[str, tuple] = {}   # key prefix -> (time, snr, rssi, source) from adverts
         self.rx_lines: collections.deque[str] = collections.deque(maxlen=LOG_LINES)
         self.radio_lock = asyncio.Lock()     # the library can't tell concurrent replies apart
         self.kill = ''                       # readline kill ring (one slot)
@@ -1193,6 +1194,17 @@ class App:
     def hops_of(path_hex: str, n: int) -> list[str]:
         return [path_hex[i:i + 2] for i in range(0, n * 2, 2)]
 
+    def last_signal(self, c: dict) -> tuple | None:
+        """Newest (time, snr, rssi, source) heard from this contact: a message or an advert."""
+        key = c['public_key'][:12]
+        best = self.signal.get(key)
+        for m in reversed(self.history.get(('d', key), [])):
+            if not m.mine and ('SNR' in m.info or 'RSSI' in m.info):
+                if not best or m.recv > best[0]:
+                    best = (m.recv, m.info.get('SNR'), m.info.get('RSSI'), 'message')
+                break
+        return best
+
     def contact_details(self, c: dict) -> list[str]:
         fmt = lambda t: datetime.fromtimestamp(t).strftime('%Y-%m-%d %H:%M:%S') if t else 'never'
         n = c.get('out_path_len', -1)
@@ -1208,6 +1220,12 @@ class App:
                 ('Public key', c['public_key']),
                 ('Last advert', fmt(c.get('last_advert', 0))),
                 ('Route', route)]
+        sig = self.last_signal(c)
+        if sig:
+            when, snr, rssi, src = sig
+            parts = ([f'SNR {snr} dB'] if snr is not None else []) + \
+                    ([f'RSSI {rssi} dBm'] if rssi is not None else [])
+            rows.append(('Signal', f'{", ".join(parts)} ({src}, {hhmm(when)})'))
         lat, lon = c.get('adv_lat'), c.get('adv_lon')
         if lat or lon:
             rows.append(('Position', f'{lat:.5f}, {lon:.5f}'))
@@ -1513,6 +1531,9 @@ class App:
         elif ptype != 'ACK':
             hops = [self.hop_name(path[i:i + 2]) for i in range(0, len(path), 2)]
         extra = ''
+        if ptype == 'ADVERT' and p.get('adv_key'):
+            self.signal[p['adv_key'][:12]] = (int(datetime.now().timestamp()), p.get('snr'),
+                                              p.get('rssi'), 'advert')
         if ptype == 'ADVERT':
             key = p.get('adv_key', '')
             c = self.mc.get_contact_by_key_prefix(key[:8]) if self.mc and key else None
