@@ -313,6 +313,8 @@ class MessagingMixin:
                 rows.append(('Advert time', datetime.fromtimestamp(p['adv_timestamp']).strftime('%Y-%m-%d %H:%M:%S')))
             if p.get('adv_lat') or p.get('adv_lon'):
                 rows.append(('Position', f'{p.get("adv_lat", 0):.5f}, {p.get("adv_lon", 0):.5f}'))
+                if dist := self.distance_text(p.get('adv_lat', 0), p.get('adv_lon', 0)):
+                    rows.append(('Distance', dist))
         for k, label in (('chan_name', 'Channel'), ('message', 'Message'), ('sender_timestamp', 'Sender time'),
                          ('attempt', 'Attempt'), ('chan_hash', 'Channel hash'), ('cipher_mac', 'MAC')):
             if k in p:

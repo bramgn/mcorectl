@@ -173,6 +173,8 @@ class ContactsMixin:
         lat, lon = c.get('adv_lat'), c.get('adv_lon')
         if lat or lon:
             rows.append(('Position', f'{lat:.5f}, {lon:.5f}'))
+            if dist := self.distance_text(lat, lon):
+                rows.append(('Distance', dist))
         out = []
         for a, b in rows:
             lines = textwrap.wrap(b, 52, break_long_words=True) or ['']

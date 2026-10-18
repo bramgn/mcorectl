@@ -5,7 +5,7 @@ from . import theme
 
 
 class SettingsMixin:
-    SETTINGS = ('port', 'autoconnect', 'name', 'tx_power', 'advert', 'auto_add', 'repeaters', 'retries', 'theme')
+    SETTINGS = ('port', 'autoconnect', 'name', 'tx_power', 'location', 'advert', 'auto_add', 'repeaters', 'retries', 'theme')
 
     def setting_rows(self) -> list[tuple[str, str]]:
         si = (self.mc.self_info if self.mc else None) or {}
@@ -16,6 +16,7 @@ class SettingsMixin:
             ('Connect on startup', onoff(self.auto_connect)),
             ('Device name', dash('name')),
             ('TX power (dBm)', dash('tx_power')),
+            ('Location (lat, lon)', self.my_position_text()),
             ('Send advert', 'zero hop / flood...'),
             ('Auto add discovered contacts',
              onoff(not si['manual_add_contacts']) if 'manual_add_contacts' in si else '-'),
@@ -23,6 +24,43 @@ class SettingsMixin:
             ('Send retries', str(self.retries)),
             ('Colour theme', self.theme),
         ]
+
+    def my_position(self) -> tuple[float, float] | None:
+        si = (self.mc.self_info if self.mc else None) or {}
+        lat, lon = si.get('adv_lat') or 0, si.get('adv_lon') or 0
+        return (lat, lon) if lat or lon else None
+
+    def my_position_text(self) -> str:
+        if not self.mc:
+            return '-'
+        pos = self.my_position()
+        return f'{pos[0]:.5f}, {pos[1]:.5f}' if pos else 'not set'
+
+    @staticmethod
+    def parse_position(text: str) -> tuple[float, float] | None:
+        text = text.strip().lower()
+        if text in ('none', 'clear', '0'):
+            return 0.0, 0.0
+        try:
+            lat, lon = (float(x) for x in text.replace(',', ' ').split())
+        except ValueError:
+            return None
+        return (lat, lon) if -90 <= lat <= 90 and -180 <= lon <= 180 else None
+
+    def distance_text(self, lat: float, lon: float) -> str | None:
+        """'12.3 km NE' from our own position to (lat, lon); None when either is unknown."""
+        me = self.my_position()
+        if not me or not (lat or lon):
+            return None
+        p1, p2 = math.radians(me[0]), math.radians(lat)
+        dl = math.radians(lon - me[1])
+        a = math.sin((p2 - p1) / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
+        km = 12742 * math.asin(math.sqrt(a))
+        brg = math.degrees(math.atan2(math.sin(dl) * math.cos(p2),
+                                      math.cos(p1) * math.sin(p2) - math.sin(p1) * math.cos(p2) * math.cos(dl)))
+        compass = ('N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW')[round(brg % 360 / 45) % 8]
+        dist = f'{km * 1000:.0f} m' if km < 1 else f'{km:.1f} km' if km < 100 else f'{km:.0f} km'
+        return f'{dist} {compass}'
 
     async def apply_setting(self, which: str, text: str | None = None):
         if which == 'advert':
@@ -68,6 +106,15 @@ class SettingsMixin:
         elif which == 'name' and text:
             r = await cmds.set_name(text)
             ok_val = ('name', text)
+        elif which == 'location' and text is not None:
+            pos = self.parse_position(text)
+            if pos is None:
+                self.status = 'location: enter "lat, lon" in decimal degrees (e.g. 52.37, 4.89), or "none" to clear'
+                return
+            r = await cmds.set_coords(*pos)
+            ok_val = None
+            if r.type != EventType.ERROR:
+                self.mc.self_info.update(adv_lat=pos[0], adv_lon=pos[1])
         elif which == 'tx_power' and text:
             try:
                 dbm = int(text)
@@ -81,7 +128,8 @@ class SettingsMixin:
         if r.type == EventType.ERROR:
             self.status = f'setting failed: {describe_error(r.payload)}'
         else:
-            self.mc.self_info[ok_val[0]] = ok_val[1]   # library may have replaced the dict
+            if ok_val:
+                self.mc.self_info[ok_val[0]] = ok_val[1]   # library may have replaced the dict
             self.status = 'saved'
 
     async def handle_settings_key(self, k):
@@ -103,7 +151,7 @@ class SettingsMixin:
         elif k == curses.KEY_DOWN:
             self.set_sel = min(len(self.SETTINGS) - 1, self.set_sel + 1)
         elif k in ('\n', ' '):
-            if which in ('port', 'name', 'tx_power'):
+            if which in ('port', 'name', 'tx_power', 'location'):
                 if which != 'port' and not self.need_radio():
                     return
                 self.set_edit = ''
