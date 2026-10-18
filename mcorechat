@@ -637,7 +637,7 @@ class App:
                             self.name_for(key), describe_error(r.payload), r.payload)
                 if attempt == 1:
                     await asyncio.sleep(1)       # transient busy/queue-full: retry once
-        if r.type == EventType.MSG_SENT:
+        if r.type in (EventType.MSG_SENT, EventType.OK):      # channel sends are answered with a plain OK
             msg.status = 'sent'
             msg.info = dict(r.payload)
             code = r.payload.get('expected_ack')
