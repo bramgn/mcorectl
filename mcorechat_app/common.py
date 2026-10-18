@@ -21,9 +21,9 @@ from meshcore.events import EventType
 DEFAULT_PORT = '/dev/ttyUSB0'
 CONFIG_FILE = os.path.expanduser('~/.config/mcorechat/config.json')
 HISTORY_FILE = os.path.expanduser('~/.config/mcorechat/history.json')
-RX_KEY = ('r', 0)           # the RX log is a pseudo-conversation of received packets
+RX_KEY = ('r', 0)           # 'Radio': received packets as a pseudo-conversation
+LOG_KEY = ('l', 0)          # 'Log': status messages and library log lines
 MAX_RETRIES = 5
-USAGE_SECONDS = 5           # how long a usage hint stays in the title bar
 HISTORY_KEEP = 500          # messages kept per conversation
 SIDEBAR_W = 24
 MAX_CHANNELS = 8
@@ -55,24 +55,24 @@ def describe_error(payload: dict) -> str:
 
 
 class LogBuffer(logging.Handler):
-    """Collects log records (ours and the meshcore library's) for the F7 log view."""
+    """Collects log records (ours and the meshcore library's); the App shows them as the Log conversation."""
 
     def __init__(self):
         super().__init__(logging.INFO)
-        self.lines: collections.deque[str] = collections.deque(maxlen=LOG_LINES)
-        self.setFormatter(logging.Formatter('%(asctime)s %(levelname)-7s %(name)s: %(message)s',
-                                            '%H:%M:%S'))
+        self.records: collections.deque = collections.deque(maxlen=LOG_LINES)   # kept until a sink attaches
+        self.sink = None
 
     def emit(self, record):
         try:
-            self.lines.extend(self.format(record).splitlines())
+            if self.sink:
+                self.sink(record)
+            else:
+                self.records.append(record)
         except Exception:
             pass
 
 
 LOG = LogBuffer()
-
-
 log = logging.getLogger('mcorechat')
 
 

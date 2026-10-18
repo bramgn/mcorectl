@@ -6,7 +6,7 @@ from . import theme
 
 class CommandsMixin:
     COMMAND_NAMES = ('advert', 'channel', 'connect', 'contact', 'disconnect', 'help', 'log', 'quit',
-                     'reload', 'repeaters', 'rxlog', 'search', 'settings', 'trace')
+                     'reload', 'repeaters', 'radio', 'search', 'settings', 'trace')
 
     def complete(self):
         """Tab completion for /commands in the input line."""
@@ -71,8 +71,8 @@ class CommandsMixin:
             ('d', 'disconnect'): self.disconnect,
             ('r', 'reload'): self.reload,
             ('s', 'settings'): lambda: setattr(self, 'settings_open', True),
-            ('l', 'log', 'console'): self.open_log,
-            ('rx', 'rxlog'): lambda: self.select(RX_KEY),
+            ('l', 'log', 'console'): lambda: self.select(LOG_KEY),
+            ('radio', 'rx', 'rxlog'): lambda: self.select(RX_KEY),
             ('repeaters',): lambda: setattr(self, 'show_repeaters', not self.show_repeaters),
             ('h', 'help', '?'): self.help,
         }
@@ -84,9 +84,6 @@ class CommandsMixin:
                 self.dirty = True
                 return
         self.status = f'unknown command /{name} (try /help)'
-
-    def open_log(self):
-        self.log_open, self.log_scroll = True, 0
 
     HELP = (
         ('Keys', ''),
@@ -100,8 +97,8 @@ class CommandsMixin:
         ('F4', 'send advert (zero hop / flood)'),
         ('F5', 'reload contacts and channels'),
         ('F6', 'show / hide repeaters'),
-        ('F7', 'log console'),
-        ('F9', 'RX log (Tab: select a packet, Enter = details)'),
+        ('F7', 'Log: status messages (lights up on problems)'),
+        ('F9', 'Radio: every packet heard (Tab: select, Enter = details)'),
         ('F8', 'contact menu: details, ping, trace, path, remove'),
         ('F10', 'quit (asks to confirm)'),
         ('^Q, ^C', 'quit immediately'),
@@ -120,8 +117,8 @@ class CommandsMixin:
         ('/connect  /c', 'choose device and connect'),
         ('/disconnect  /d', 'disconnect from the radio'),
         ('/advert  /a', 'advert menu, or /advert zero|flood'),
-        ('/log  /console', 'log console (F7)'),
-        ('/rxlog', 'show the RX log: every packet heard (F9)'),
+        ('/log  /console', 'show the Log (F7)'),
+        ('/radio  /rxlog', 'show the Radio packet list (F9)'),
         ('/search  /f', 'search all messages: /search <text>'),
         ('/trace  /t', 'trace hops: /trace 78,64,78 or repeater names'),
         ('/reload  /r', 'reload contacts and channels'),
@@ -151,41 +148,3 @@ class CommandsMixin:
         scr.addnstr(y0 + bh - 1, x0 + 1, 'Up/Down scroll · any other key closes' if len(self.HELP) > room
                     else 'press any key to close', bw - 2, theme.REV | curses.A_DIM)
         curses.curs_set(0)
-
-    def handle_log_key(self, k):
-        if k in ('\x1b', 'q', curses.KEY_F7):
-            self.log_open = False
-        elif k == curses.KEY_F9:
-            self.log_open = False
-            self.select(RX_KEY)
-        elif k == curses.KEY_UP:
-            self.log_scroll += 1
-        elif k == curses.KEY_DOWN:
-            self.log_scroll = max(0, self.log_scroll - 1)
-        elif k == curses.KEY_PPAGE:
-            self.log_scroll += 10
-        elif k == curses.KEY_NPAGE:
-            self.log_scroll = max(0, self.log_scroll - 10)
-        elif k in (curses.KEY_END, 'G'):
-            self.log_scroll = 0
-        elif k == curses.KEY_HOME:
-            self.log_scroll = 10 ** 9
-        elif isinstance(k, str) and len(k) == 1 and ord(k) in (CTRL_Q, CTRL_C):
-            self.quit = True
-        self.dirty = True
-
-    def draw_log(self, scr, h, w):
-        scr.erase()
-        lines = []
-        for l in LOG.lines:
-            lines += textwrap.wrap(l, w - 1, subsequent_indent='    ') or ['']
-        body = h - 2
-        self.log_scroll = min(self.log_scroll, max(0, len(lines) - body))
-        end = len(lines) - self.log_scroll
-        for y, l in enumerate(lines[max(0, end - body):end]):
-            scr.addnstr(1 + y, 0, l, w - 1)
-        scr.addnstr(0, 0, ' Log'.ljust(w), w - 1, theme.REV | curses.A_BOLD)
-        scr.addnstr(h - 1, 0, ' Up/Down/PgUp/PgDn scroll  End latest  F9 RX log  Esc/q close'.ljust(w),
-                    w - 1, theme.REV)
-        curses.curs_set(0)
-        scr.refresh()

@@ -19,6 +19,14 @@ BAD_WORDS = ('fail', 'not sent', 'error', 'no reply', 'timed out', 'incomplete',
 GOOD_WORDS = ('reachable', 'saved', 'route discovered', 'created', 'removed')
 
 
+PROBLEM_WORDS = BAD_WORDS + ('usage', 'no command', 'select a contact', 'not in the contact', 'read-only')
+
+
+def is_problem(text: str) -> bool:
+    t = text.lower()
+    return any(x in t for x in PROBLEM_WORDS)
+
+
 def result_attr(text: str, base: int, red: bool = True) -> int:
     """Green for successful results, red for failed ones (if `red`), else base."""
     t = text.lower()

@@ -28,8 +28,8 @@ class MessagingMixin:
 
     async def send(self, text: str):
         key = self.selected
-        if key == RX_KEY:
-            self.status = 'the RX log is read-only: pick a channel or contact to send'
+        if key in (RX_KEY, LOG_KEY):
+            self.status = 'this view is read-only: pick a channel or contact to send'
             return
         if key is None or not text or not self.need_radio():
             return
@@ -112,7 +112,7 @@ class MessagingMixin:
             return
         hits = []
         for key, msgs in self.history.items():
-            if not key or key == RX_KEY:
+            if not key or key in (RX_KEY, LOG_KEY):
                 continue
             for i, m in enumerate(msgs):
                 if q.lower() in m.text.lower():
@@ -237,7 +237,7 @@ class MessagingMixin:
         elif k == curses.KEY_END:
             self.msg_sel = len(msgs) - 1
         elif k in ('r', 'R') and msgs and msgs[self.msg_sel].mine and \
-                msgs[self.msg_sel].status == 'failed' and self.selected != RX_KEY:
+                msgs[self.msg_sel].status == 'failed' and self.selected not in (RX_KEY, LOG_KEY):
             if self.need_radio():
                 m = msgs[self.msg_sel]
                 m.status = ''
@@ -246,6 +246,10 @@ class MessagingMixin:
         elif k == '\n' and msgs:
             if self.selected == RX_KEY:
                 self.show_packet(msgs[self.msg_sel].info)
+            elif self.selected == LOG_KEY:
+                m = msgs[self.msg_sel]
+                self.show('Log entry', [f'Time: {datetime.fromtimestamp(m.ts):%Y-%m-%d %H:%M:%S}', ''] +
+                          (textwrap.wrap(m.text, 64) or ['']))
             else:
                 self.show('Message details', self.message_details(msgs[self.msg_sel]))
         elif isinstance(k, str) and (k.isprintable() or k == '\x7f'):
@@ -341,7 +345,7 @@ class MessagingMixin:
             extra += '  path ' + ' > '.join(hops)
         now = int(datetime.now().timestamp())
         self.add(RX_KEY, Msg(now, '', f'{ptype:<9} rssi {p.get("rssi", "?"):>4} '
-                             f'snr {p.get("snr", "?"):>5}{extra}', recv=now, info=dict(p)))
+                             f'snr {p.get("snr", "?"):>5}{extra}', recv=now, info=dict(p)), unread=False)
 
     def render_lines(self, width: int) -> list[tuple[str, int, int]]:
         lines = []

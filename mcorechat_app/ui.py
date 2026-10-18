@@ -54,7 +54,7 @@ class UiMixin:
             self.confirm_quit = True
             self.dirty = True
             return
-        if k == curses.KEY_F8 and not (self.picker_open or self.settings_open or self.log_open):
+        if k == curses.KEY_F8 and not (self.picker_open or self.settings_open):
             self.open_contact_menu()
             self.dirty = True
             return
@@ -62,16 +62,8 @@ class UiMixin:
             self.help_open, self.help_scroll = True, 0
             self.dirty = True
             return
-        if self.log_open:
-            self.handle_log_key(k)
-            return
-        if k == curses.KEY_F9:
-            self.select(RX_KEY)
-            self.dirty = True
-            return
-        if k == curses.KEY_F7:
-            self.open_log()
-            self.dirty = True
+        if k in (curses.KEY_F7, curses.KEY_F9):
+            self.select(LOG_KEY if k == curses.KEY_F7 else RX_KEY)
             return
         if self.picker_open:
             await self.handle_picker_key(k)
@@ -169,9 +161,6 @@ class UiMixin:
 
     def draw(self, scr):
         h, w = scr.getmaxyx()
-        if self.log_open:
-            self.draw_log(scr, h, w)
-            return
         scr.erase()
         if h < 6 or w < SIDEBAR_W + 20:
             scr.addstr(0, 0, 'terminal too small'[:w - 1])
@@ -189,10 +178,11 @@ class UiMixin:
         for k, n in ents[:n_ch]:
             rows.append((n, k))
         rows.append(('Contacts', None))
-        for k, n in ents[n_ch:-1]:
+        for k, n in ents[n_ch:-2]:
             rows.append((n, k))
-        rows.append(('Radio', None))
-        rows.append((ents[-1][1], ents[-1][0]))
+        rows.append(('Console', None))
+        for k, n in ents[-2:]:
+            rows.append((n, k))
         sel_row = next((i for i, (_, k) in enumerate(rows) if k == self.selected), 0)
         top = max(0, min(sel_row - body_h // 2, len(rows) - body_h))
         for y, (label, key) in enumerate(rows[top:top + body_h]):
@@ -211,15 +201,16 @@ class UiMixin:
 
         # title
         si = (self.mc.self_info if self.mc else None) or {}
-        title = f' mcorechat — {si.get("name", "disconnected")} '
+        title = f' mcorechat — {si["name"]} ' if si.get('name') else ' mcorechat '
         if self.selected:
             title += f'— {self.name_for(self.selected)} '
         scr.addnstr(0, 0, ' ' * w, w - 1, theme.REV)
         scr.addnstr(0, 0, title, w - 1, theme.REV)
+        conn = self.connection_text()          # the title bar only ever shows the connection state
         room = w - 1 - len(title) - 2
-        if room > 8 and self.status:
-            msg = self.status if len(self.status) <= room else self.status[:room - 1] + '…'
-            scr.addnstr(0, w - 1 - len(msg) - 1, msg, room, theme.result_attr(msg, theme.REV, red=False))
+        if room > 8:
+            conn = conn if len(conn) <= room else conn[:room - 1] + '…'
+            scr.addnstr(0, w - 1 - len(conn) - 1, conn, room, theme.REV)
 
         # messages
         lines = self.render_lines(mw)

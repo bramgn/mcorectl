@@ -15,7 +15,8 @@ Keys:
   F4             send an advert (zero hop or flood)
   F5             reload contacts and channels from the radio
   F6             show / hide repeaters in the contact list
-  F7             log console
+  F7             Log (status messages; lights up in the sidebar on problems)
+  F9             Radio (every packet heard)
   F8             contact menu (details, ping, trace, path, remove)
   F2             settings (name, TX power, auto-add contacts, repeaters)
   F1             help
@@ -25,7 +26,7 @@ Keys:
 
 Commands (type in the input line, /help lists them):
   /channel <name> [secret-hex]   create a channel (#name joins a public hashtag channel)
-  /quit /connect /disconnect /advert [zero|flood] /trace <hops> /log /rxlog /reload /settings /repeaters /help
+  /quit /connect /disconnect /advert [zero|flood] /trace <hops> /log /radio /reload /settings /repeaters /help
   Start a message with // to send a literal leading slash.
 
 Usage:

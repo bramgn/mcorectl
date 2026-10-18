@@ -16,9 +16,6 @@ async def ui(scr, app: App):
         except curses.error:
             k = None
         if k is None:
-            if app._status_expiry and time.monotonic() > app._status_expiry:
-                app._status, app._status_expiry = '', None
-                app.dirty = True
             if app.dirty:
                 app.dirty = False
                 app.draw(scr)

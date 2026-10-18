@@ -47,7 +47,7 @@ class App(ConnectionMixin, MessagingMixin, SettingsMixin, ContactsMixin, Command
 
     def save_history(self):
         raw = {json.dumps(k): [asdict(m) for m in ms[-HISTORY_KEEP:] if m.who != '*']
-               for k, ms in self.history.items() if k and k != RX_KEY}
+               for k, ms in self.history.items() if k and k not in (RX_KEY, LOG_KEY)}
         raw = {k: v for k, v in raw.items() if v}
         data = json.dumps(raw, default=lambda o: o.hex() if isinstance(o, (bytes, bytearray)) else str(o))
         if data == self._saved_history:
@@ -64,8 +64,6 @@ class App(ConnectionMixin, MessagingMixin, SettingsMixin, ContactsMixin, Command
     @status.setter
     def status(self, text: str):
         self._status = text
-        # usage hints are only worth a glance: drop them after a few seconds
-        self._status_expiry = time.monotonic() + USAGE_SECONDS if text.startswith('usage') else None
         log.info(text)
 
     def __init__(self, args):
@@ -108,8 +106,6 @@ class App(ConnectionMixin, MessagingMixin, SettingsMixin, ContactsMixin, Command
         self.confirm_remove: dict | None = None
         self.help_open = False
         self.help_scroll = 0
-        self.log_open = False
-        self.log_scroll = 0
         self.signal: dict[str, tuple] = {}   # key prefix -> (time, snr, rssi, source) from adverts
         self.radio_lock = asyncio.Lock()     # the library can't tell concurrent replies apart
         self.kill = ''                       # readline kill ring (one slot)
@@ -119,6 +115,10 @@ class App(ConnectionMixin, MessagingMixin, SettingsMixin, ContactsMixin, Command
         self.picker_note = ''
         self.scan_task: asyncio.Task | None = None
         self.set_edit: str | None = None     # text being edited, None when not editing
+        LOG.sink = self.on_log_record        # status messages and library logs go to the Log entry
+        for rec in list(LOG.records):
+            self.on_log_record(rec)
+        LOG.records.clear()
 
     def contact_entries(self) -> list[tuple[tuple, str]]:
         """Contacts (plus unknown senders we have history with), newest first."""
@@ -143,7 +143,7 @@ class App(ConnectionMixin, MessagingMixin, SettingsMixin, ContactsMixin, Command
 
     def entries(self) -> list[tuple[tuple, str]]:
         ch = [(('c', i), n) for i, n in self.channels]
-        return ch + self.contact_entries() + [(RX_KEY, 'RX log')]
+        return ch + self.contact_entries() + [(LOG_KEY, 'Log'), (RX_KEY, 'Radio')]
 
     def name_for(self, key: tuple) -> str:
         for k, n in self.entries():
@@ -151,21 +151,36 @@ class App(ConnectionMixin, MessagingMixin, SettingsMixin, ContactsMixin, Command
                 return n
         return key[1][:8] if key[0] == 'd' else f'ch{key[1]}'
 
-    def add(self, key: tuple, msg: Msg):
+    def add(self, key: tuple, msg: Msg, unread: bool = True):
         msgs = self.history.setdefault(key, [])
         msgs.append(msg)
-        if key == RX_KEY and len(msgs) > LOG_LINES:
+        if key in (RX_KEY, LOG_KEY) and len(msgs) > LOG_LINES:
             del msgs[0]
             self.msg_sel = max(0, self.msg_sel - 1)
-        if key == RX_KEY and key != self.selected:
-            pass                                  # packets don't count as unread
-        elif key == self.selected:
+        if key == self.selected:
             self.scroll = 0
             if self.focus == 'msgs' and self.msg_sel == len(msgs) - 2:
                 self.msg_sel = len(msgs) - 1
-        else:
+        elif unread:
             self.unread[key] = self.unread.get(key, 0) + 1
         self.dirty = True
+
+    def on_log_record(self, record):
+        """Log lines become messages in the Log conversation; problems make its sidebar entry light up."""
+        text = record.getMessage()
+        if record.name != 'mcorechat':
+            text = f'{record.name.split(".")[-1]}: {text}'
+        if record.levelno >= logging.WARNING:
+            text = f'{record.levelname}: {text}'
+        problem = record.levelno >= logging.WARNING or (record.name == 'mcorechat' and theme.is_problem(text))
+        now = int(record.created)
+        for line in text.splitlines() or ['']:
+            self.add(LOG_KEY, Msg(now, '', line, recv=now), unread=problem)
+
+    def connection_text(self) -> str:
+        if self.connecting:
+            return f'connecting to {self.target()}...'
+        return f'connected to {self.target()}' if self.mc else 'disconnected'
 
     def select(self, key: tuple):
         self.selected = key

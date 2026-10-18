@@ -210,7 +210,7 @@ per-conversation history, unread counts, and send/receive for channels and priva
 ```
 
 Up/Down select a conversation, Enter sends (on an empty line it opens the contact menu for a selected contact), PgUp/PgDn scroll, `F4` advert (zero hop or flood; `/advert zero` / `/advert flood` skip the menu),
-`F6` show/hide repeaters, `F7` log console, `F9` or `/rxlog` selects the **RX log** entry in the sidebar (every packet the radio hears; Tab to highlight a packet, Enter shows its details), `F2` settings (colour theme — blue, green, amber, light, mono —, name, TX power, auto add discovered contacts), `F3` pick a device and connect (or disconnect), `F5` reload, `^Q` quit.
+`F6` show/hide repeaters, `F7` / `/log` selects the **Log** entry and `F9` / `/radio` the **Radio** entry under *Console* in the sidebar (Radio lists every packet the radio hears; Tab to highlight a packet, Enter shows its details), `F2` settings (colour theme — blue, green, amber, light, mono —, name, TX power, auto add discovered contacts), `F3` pick a device and connect (or disconnect), `F5` reload, `^Q` quit.
 
 The app starts disconnected and never connects on its own; press `F3` to list serial ports and BLE devices and choose one. The serial port / BLE address
 can be changed in the settings screen (`F2`) before connecting.
@@ -220,7 +220,7 @@ Slash commands work in the input line: `/quit` (`/q`), `/connect`, `/disconnect`
 `Tab` completes a command (listing the matches when ambiguous). Start a message with `//` to send a literal leading `/`.
 
 The input line understands the usual readline keys (`^A ^E ^B ^F ^D ^U ^K ^W ^Y`); `^P`/`^N` switch conversation.
-Log output from the radio library is kept off the screen and shown in the `F7` log console instead.
+The title bar's top-right corner only shows the connection state. Everything else (status messages, usage hints, errors, library log output) goes to the **Log** entry in the sidebar, which lights up like an unread conversation when something goes wrong.
 
 Channels: `/channel #name` joins a public hashtag channel (key derived from the name, like other MeshCore apps).
 `/channel name` creates a private channel with a random key and prints the secret in the conversation so you can
