@@ -56,6 +56,7 @@ DEFAULT_PORT = '/dev/ttyUSB0'
 CONFIG_FILE = os.path.expanduser('~/.config/mcorechat/config.json')
 HISTORY_FILE = os.path.expanduser('~/.config/mcorechat/history.json')
 RX_KEY = ('r', 0)           # the RX log is a pseudo-conversation of received packets
+MAX_RETRIES = 5
 HISTORY_KEEP = 500          # messages kept per conversation
 SIDEBAR_W = 24
 MAX_CHANNELS = 8
@@ -203,7 +204,7 @@ class App:
 
     def save_config(self):
         cfg = {'show_repeaters': self._show_repeaters, 'auto_connect': self.auto_connect,
-               'theme': self.theme,
+               'theme': self.theme, 'favorites': sorted(self.favorites), 'retries': self.retries,
                'port': self.args.port, 'ble': self.args.ble}
         try:
             os.makedirs(os.path.dirname(CONFIG_FILE), exist_ok=True)
@@ -256,6 +257,8 @@ class App:
         cfg = load_config()
         self._show_repeaters = bool(cfg.get('show_repeaters', False))
         self.auto_connect = bool(cfg.get('auto_connect', False))
+        self.favorites: set[str] = set(cfg.get('favorites', []))     # contact key prefixes (12 hex)
+        self.retries = max(0, min(MAX_RETRIES, int(cfg.get('retries', 1))))
         self.theme = cfg.get('theme') if cfg.get('theme') in THEMES else 'blue'
         self.scroll = 0                      # lines scrolled up from bottom
         self.buf = ''
@@ -268,6 +271,7 @@ class App:
         self.set_sel = 0
         self.picker_open = False
         self.focus = 'input'                 # 'input' | 'msgs'
+        self.search: dict | None = None      # /search results overlay
         self.msg_sel = 0
         self.last_body_h = 0
         self.details: list[str] | None = None
@@ -299,14 +303,16 @@ class App:
         out = []
         known = set()
         contacts = sorted(self.contacts().values(),
-                          key=lambda c: -c.get('last_advert', 0))
+                          key=lambda c: (c['public_key'][:12] not in self.favorites,
+                                         -c.get('last_advert', 0)))
         for c in contacts:
             key = ('d', c['public_key'][:12])
             known.add(key)
             is_rep = c.get('type') == 2
-            if is_rep and not self.show_repeaters and key not in self.history:
+            fav = key[1] in self.favorites
+            if is_rep and not self.show_repeaters and not fav and key not in self.history:
                 continue
-            tag = '*' if is_rep else ''
+            tag = '★' if fav else '*' if is_rep else ''
             out.append((key, tag + (c.get('adv_name') or c['public_key'][:8])))
         for key in self.history:
             if key and key[0] == 'd' and key not in known:
@@ -625,39 +631,79 @@ class App:
         now = int(datetime.now().timestamp())
         msg = Msg(now, 'me', text, mine=True, recv=now)
         self.add(key, msg)
+        await self.deliver(key, msg)
+
+    async def transmit(self, key: tuple, msg: Msg, contact: dict | None, attempt: int = 0):
+        """One send to the radio; retried when the radio rejects it (busy / queue full)."""
+        async with self.radio_lock:
+            for n in range(self.retries + 1):
+                if key[0] == 'c':
+                    r = await self.mc.commands.send_chan_msg(key[1], msg.text, msg.ts)
+                else:
+                    r = await self.mc.commands.send_msg(contact, msg.text, msg.ts, attempt)
+                if r.type != EventType.ERROR:
+                    break
+                log.warning('send attempt %d to %s failed: %s %s', n + 1,
+                            self.name_for(key), describe_error(r.payload), r.payload)
+                if n < self.retries:
+                    await asyncio.sleep(1)
+        return r
+
+    def expect_ack(self, msg: Msg, payload: dict):
+        code = payload.get('expected_ack')
+        if code:
+            self.pending_acks[code if isinstance(code, str) else code.hex()] = msg
+
+    async def deliver(self, key: tuple, msg: Msg):
         contact = None
         if key[0] == 'd':
             contact = self.mc.get_contact_by_key_prefix(key[1])
             if contact is None:
                 msg.status = 'failed'
                 self.status = 'unknown contact'
+                self.dirty = True
                 return
-        async with self.radio_lock:
-            for attempt in (1, 2):
-                if key[0] == 'c':
-                    r = await self.mc.commands.send_chan_msg(key[1], text)
-                else:
-                    r = await self.mc.commands.send_msg(contact, text)
-                if r.type != EventType.ERROR:
-                    break
-                log.warning('send attempt %d to %s failed: %s %s', attempt,
-                            self.name_for(key), describe_error(r.payload), r.payload)
-                if attempt == 1:
-                    await asyncio.sleep(1)       # transient busy/queue-full: retry once
+        r = await self.transmit(key, msg, contact)
         if r.type in (EventType.MSG_SENT, EventType.OK):      # channel sends are answered with a plain OK
             msg.status = 'sent'
             msg.info = dict(r.payload)
-            code = r.payload.get('expected_ack')
-            if key[0] == 'd' and code:
-                self.pending_acks[code if isinstance(code, str) else code.hex()] = msg
+            if key[0] == 'd':
+                self.expect_ack(msg, r.payload)
+                if self.retries:
+                    asyncio.create_task(self.guarded(self.watch_ack(key, msg)))
         else:
             msg.status = 'failed'
             self.status = f'send failed: {describe_error(r.payload)}'
         self.dirty = True
 
+    async def watch_ack(self, key: tuple, msg: Msg):
+        """Resend an unacknowledged direct message up to `retries` times, then mark it failed."""
+        for attempt in range(self.retries + 1):
+            wait = msg.info.get('suggested_timeout', 10000) / 1000 + 2
+            for _ in range(int(wait * 2)):
+                await asyncio.sleep(0.5)
+                if msg.status != 'sent' or self.mc is None:
+                    return
+            if attempt == self.retries:
+                break
+            contact = self.mc.get_contact_by_key_prefix(key[1])
+            if contact is None:
+                break
+            self.status = f'no ack from {contact.get("adv_name", "?")}, retry {attempt + 1}/{self.retries}'
+            self.dirty = True
+            r = await self.transmit(key, msg, contact, attempt + 1)
+            if r.type == EventType.ERROR:
+                break
+            msg.info.update(r.payload)
+            self.expect_ack(msg, r.payload)
+        if msg.status == 'sent':
+            msg.status = 'failed'
+            self.status = 'no acknowledgement received'
+            self.dirty = True
+
     # ---- settings ----------------------------------------------------------
 
-    SETTINGS = ('port', 'autoconnect', 'name', 'tx_power', 'auto_add', 'repeaters', 'theme')
+    SETTINGS = ('port', 'autoconnect', 'name', 'tx_power', 'auto_add', 'repeaters', 'retries', 'theme')
 
     def setting_rows(self) -> list[tuple[str, str]]:
         si = (self.mc.self_info if self.mc else None) or {}
@@ -671,12 +717,18 @@ class App:
             ('Auto add discovered contacts',
              onoff(not si['manual_add_contacts']) if 'manual_add_contacts' in si else '-'),
             ('Show repeaters in list', onoff(self.show_repeaters)),
+            ('Send retries', str(self.retries)),
             ('Colour theme', self.theme),
         ]
 
     async def apply_setting(self, which: str, text: str | None = None):
         if which == 'repeaters':
             self.show_repeaters = not self.show_repeaters
+            return
+        if which == 'retries':
+            self.retries = (self.retries + 1) % (MAX_RETRIES + 1)
+            self.save_config()
+            self.status = f'send retries: {self.retries}'
             return
         if which == 'theme':
             names = list(THEMES)
@@ -764,7 +816,7 @@ class App:
         self.dirty = True
 
     COMMAND_NAMES = ('advert', 'channel', 'connect', 'contact', 'disconnect', 'help', 'log', 'quit',
-                     'reload', 'repeaters', 'rxlog', 'settings', 'trace')
+                     'reload', 'repeaters', 'rxlog', 'search', 'settings', 'trace')
 
     def complete(self):
         """Tab completion for /commands in the input line."""
@@ -809,6 +861,10 @@ class App:
                 self.status = 'usage: /advert [zero|flood]'
             else:
                 await self.advert(kinds[arg.strip().lower()])
+            self.dirty = True
+            return
+        if name in ('f', 'find', 'search'):
+            self.do_search(arg.strip())
             self.dirty = True
             return
         if name in ('t', 'trace'):
@@ -868,6 +924,65 @@ class App:
             self.status = 'trace done'
         asyncio.create_task(self.guarded(go()))
 
+    def do_search(self, q: str):
+        if not q:
+            self.status = 'usage: /search <text>'
+            return
+        hits = []
+        for key, msgs in self.history.items():
+            if not key or key == RX_KEY:
+                continue
+            for i, m in enumerate(msgs):
+                if q.lower() in m.text.lower():
+                    hits.append((m.recv or m.ts, key, i, m))
+        hits.sort(key=lambda h: -h[0])
+        if not hits:
+            self.status = f'no messages match "{q}"'
+            return
+        self.search = {'q': q, 'hits': hits[:200], 'sel': 0, 'total': len(hits)}
+
+    def handle_search_key(self, k):
+        sr = self.search
+        n = len(sr['hits'])
+        if k in ('\x1b', 'q'):
+            self.search = None
+        elif k == curses.KEY_UP:
+            sr['sel'] = max(0, sr['sel'] - 1)
+        elif k == curses.KEY_DOWN:
+            sr['sel'] = min(n - 1, sr['sel'] + 1)
+        elif k == curses.KEY_PPAGE:
+            sr['sel'] = max(0, sr['sel'] - 10)
+        elif k == curses.KEY_NPAGE:
+            sr['sel'] = min(n - 1, sr['sel'] + 10)
+        elif k == '\n':
+            _, key, i, _m = sr['hits'][sr['sel']]
+            self.search = None
+            self.select(key)
+            self.focus, self.msg_sel = 'msgs', i
+        elif isinstance(k, str) and len(k) == 1 and ord(k) in (CTRL_Q, CTRL_C):
+            self.quit = True
+        self.dirty = True
+
+    def draw_search(self, scr, h, w):
+        sr = self.search
+        bw = min(w - 2, 78)
+        bh = min(h - 2, len(sr['hits']) + 3)
+        y0, x0 = max(0, (h - bh) // 2), max(0, (w - bw) // 2)
+        for y in range(bh):
+            scr.addstr(y0 + y, x0, ' ' * bw, REV)
+        shown = len(sr['hits'])
+        more = f' (first {shown} of {sr["total"]})' if sr['total'] > shown else ''
+        scr.addnstr(y0, x0 + 1, f'Search "{sr["q"]}": {sr["total"]} match(es){more}', bw - 2, REV | curses.A_BOLD)
+        rows = bh - 3
+        top = max(0, min(sr['sel'] - rows // 2, shown - rows))
+        for i, (_, key, _idx, m) in enumerate(sr['hits'][top:top + rows]):
+            who = f'{self.name_for(key)}: ' if key else ''
+            line = f'{hhmm(m.recv or m.ts)} {who}{m.who + ": " if m.who and m.who != "me" else ""}{m.text}'
+            attr = SEL if top + i == sr['sel'] else REV
+            scr.addnstr(y0 + 1 + i, x0 + 1, line.replace('\n', ' ').ljust(bw - 2), bw - 2, attr)
+        scr.addnstr(y0 + bh - 1, x0 + 1, 'Enter jump to message · Esc close', bw - 2, REV | curses.A_DIM)
+        curses.curs_set(0)
+
     def open_log(self):
         self.log_open, self.log_scroll = True, 0
 
@@ -894,7 +1009,7 @@ class App:
         ('Up / Down', 'select channel / contact'),
         ('PgUp / PgDn', 'scroll history'),
         ('Enter', 'send message; empty line on a contact = contact menu'),
-        ('Tab', 'focus messages: Up/Down, Enter = details'),
+        ('Tab', 'focus messages: Up/Down, Enter = details, r = resend failed'),
         ('F1', 'this help'),
         ('F2', 'settings'),
         ('F3', 'choose device and connect / disconnect'),
@@ -923,6 +1038,7 @@ class App:
         ('/advert  /a', 'advert menu, or /advert zero|flood'),
         ('/log  /console', 'log console (F7)'),
         ('/rxlog', 'show the RX log: every packet heard (F9)'),
+        ('/search  /f', 'search all messages: /search <text>'),
         ('/trace  /t', 'trace hops: /trace 78,64,78 or repeater names'),
         ('/reload  /r', 'reload contacts and channels'),
         ('/settings  /s', 'settings'),
@@ -1042,6 +1158,9 @@ class App:
             elif k in ('n', 'N', '\x1b', '\n'):
                 self.confirm_remove = None
             self.dirty = True
+            return
+        if self.search:
+            self.handle_search_key(k)
             return
         if self.cmenu_open:
             await self.handle_cmenu_key(k)
@@ -1176,10 +1295,14 @@ class App:
 
     def menu_actions(self) -> tuple:
         c = self.selected_contact() or {}
+        fav = ('Remove favorite' if c.get('public_key', '')[:12] in self.favorites
+               else 'Add favorite', 'favorite')
+        acts = list(self.CONTACT_ACTIONS)
+        acts.insert(1, fav)
         if c.get('type') == 2:
-            return self.CONTACT_ACTIONS
+            return tuple(acts)
         # only repeaters/rooms answer traces, so no ping for plain clients
-        return (('Chat', 'chat'),) + tuple(a for a in self.CONTACT_ACTIONS if a[1] != 'ping')
+        return (('Chat', 'chat'),) + tuple(a for a in acts if a[1] != 'ping')
 
     def selected_contact(self) -> dict | None:
         key = self.selected
@@ -1285,6 +1408,13 @@ class App:
             return
         if action == 'details':
             self.show(f'Contact: {name}', self.contact_details(c))
+            return
+        if action == 'favorite':
+            k = c['public_key'][:12]
+            self.favorites ^= {k}
+            self.save_config()
+            self.status = f'{name} {"added to" if k in self.favorites else "removed from"} favorites'
+            self.dirty = True
             return
         if action == 'remove':
             self.confirm_remove = {'contact': c}
@@ -1464,7 +1594,7 @@ class App:
             rows.append(('Sent', fmt(m.ts)))
             rows.append(('Status', {'sent': 'sent to radio (no ack yet)',
                                     'acked': 'delivered (ack received)',
-                                    'failed': 'failed'}.get(m.status, m.status or '-')))
+                                    'failed': 'failed (press r in the message list to resend)'}.get(m.status, m.status or '-')))
         elif m.info:
             rows.append(('Sent (sender clock)', fmt(info.get('sender_timestamp', 0))))
             rows.append(('Received', fmt(m.recv)))
@@ -1504,6 +1634,13 @@ class App:
             self.msg_sel = 0
         elif k == curses.KEY_END:
             self.msg_sel = len(msgs) - 1
+        elif k in ('r', 'R') and msgs and msgs[self.msg_sel].mine and \
+                msgs[self.msg_sel].status == 'failed' and self.selected != RX_KEY:
+            if self.need_radio():
+                m = msgs[self.msg_sel]
+                m.status = ''
+                self.status = 'resending...'
+                asyncio.create_task(self.guarded(self.deliver(self.selected, m)))
         elif k == '\n' and msgs:
             if self.selected == RX_KEY:
                 self.show_packet(msgs[self.msg_sel].info)
@@ -1753,6 +1890,8 @@ class App:
             self.draw_help(scr, h, w)
         if self.details is not None:
             self.draw_details(scr, h, w)
+        if self.search:
+            self.draw_search(scr, h, w)
         if self.cmenu_open:
             self.draw_cmenu(scr, h, w)
         if self.advert_menu_open:

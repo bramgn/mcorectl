@@ -234,6 +234,15 @@ Message details: press `Tab` (on an empty line or one not starting with `/`) to 
 Up/Down/PgUp/PgDn to highlight a message and `Enter` to see sender, key, times, route, SNR/RSSI, delivery status and
 the full text. `Tab` or `Esc` returns to the input; typing a character does too.
 
+Favorites: the contact menu has Add/Remove favorite; favorites are marked `★`, sorted to the top of the contact list
+(also when repeaters are hidden) and remembered in the config file.
+
+Search: `/search <text>` (`/f`) finds the text in every conversation; Enter jumps to the message.
+
+Delivery and retries: the **Send retries** setting (F2, 0-5, default 1) controls how often a send is repeated when the
+radio rejects it, and how often an unacknowledged private message is resent (same timestamp, so the recipient does not
+see duplicates) before it is marked failed. In the message list (`Tab`), `r` resends a failed message.
+
 Settings (`F2`) also has "Connect on startup" (off by default): when on, `mcorechat` connects to the saved
 serial port / BLE address by itself at launch.
 
