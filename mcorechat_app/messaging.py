@@ -16,9 +16,12 @@ class MessagingMixin:
     def on_chan_msg(self, event):
         p = event.payload
         # channel text already arrives as "sender: message"
-        self.add(('c', p.get('channel_idx', 0)),
-                 Msg(p.get('sender_timestamp', 0), '', p.get('text', ''),
-                     recv=int(datetime.now().timestamp()), info=dict(p)))
+        key = ('c', p.get('channel_idx', 0))
+        msg = Msg(p.get('sender_timestamp', 0), '', p.get('text', ''),
+                  recv=int(datetime.now().timestamp()), info=dict(p))
+        if self.is_blocked(key, self.sender_of(msg)):
+            return
+        self.add(key, msg)
 
     def on_ack(self, event):
         m = self.pending_acks.pop(event.payload.get('code', ''), None)

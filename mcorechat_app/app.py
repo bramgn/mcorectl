@@ -6,11 +6,12 @@ from .connection import ConnectionMixin
 from .messaging import MessagingMixin
 from .settings import SettingsMixin
 from .contacts import ContactsMixin
+from .channels import ChannelsMixin
 from .commands import CommandsMixin
 from .ui import UiMixin
 
 
-class App(ConnectionMixin, MessagingMixin, SettingsMixin, ContactsMixin, CommandsMixin, UiMixin):
+class App(ConnectionMixin, MessagingMixin, SettingsMixin, ContactsMixin, ChannelsMixin, CommandsMixin, UiMixin):
     @property
     def status(self) -> str:
         return self._status
@@ -26,7 +27,7 @@ class App(ConnectionMixin, MessagingMixin, SettingsMixin, ContactsMixin, Command
 
     def save_config(self):
         cfg = {'show_repeaters': self._show_repeaters, 'auto_connect': self.auto_connect,
-               'theme': self.theme, 'favorites': sorted(self.favorites), 'retries': self.retries,
+               'theme': self.theme, 'favorites': sorted(self.favorites), 'channels': self.chan_prefs, 'retries': self.retries,
                'port': self.args.port, 'ble': self.args.ble}
         try:
             os.makedirs(os.path.dirname(CONFIG_FILE), exist_ok=True)
@@ -46,7 +47,7 @@ class App(ConnectionMixin, MessagingMixin, SettingsMixin, ContactsMixin, Command
             return {}
 
     def save_history(self):
-        raw = {json.dumps(k): [asdict(m) for m in ms[-HISTORY_KEEP:] if m.who != '*']
+        raw = {json.dumps(k): [asdict(m) for m in ms[-self.keep_for(k):] if m.who != '*']
                for k, ms in self.history.items() if k and k not in (RX_KEY, LOG_KEY)}
         raw = {k: v for k, v in raw.items() if v}
         data = json.dumps(raw, default=lambda o: o.hex() if isinstance(o, (bytes, bytearray)) else str(o))
@@ -80,6 +81,7 @@ class App(ConnectionMixin, MessagingMixin, SettingsMixin, ContactsMixin, Command
         self._show_repeaters = bool(cfg.get('show_repeaters', False))
         self.auto_connect = bool(cfg.get('auto_connect', False))
         self.favorites: set[str] = set(cfg.get('favorites', []))     # contact key prefixes (12 hex)
+        self.chan_prefs: dict[str, dict] = cfg.get('channels') if isinstance(cfg.get('channels'), dict) else {}
         self.retries = max(0, min(MAX_RETRIES, int(cfg.get('retries', 1))))
         self.theme = cfg.get('theme') if cfg.get('theme') in theme.THEMES else 'blue'
         self.scroll = 0                      # lines scrolled up from bottom
@@ -155,6 +157,8 @@ class App(ConnectionMixin, MessagingMixin, SettingsMixin, ContactsMixin, Command
     def add(self, key: tuple, msg: Msg, unread: bool = True):
         msgs = self.history.setdefault(key, [])
         msgs.append(msg)
+        if key[0] == 'c' and len(msgs) > self.keep_for(key):
+            del msgs[0]
         if key in (RX_KEY, LOG_KEY) and len(msgs) > LOG_LINES:
             del msgs[0]
             self.msg_sel = max(0, self.msg_sel - 1)
@@ -162,7 +166,7 @@ class App(ConnectionMixin, MessagingMixin, SettingsMixin, ContactsMixin, Command
             self.scroll = 0
             if self.focus == 'msgs' and self.msg_sel == len(msgs) - 2:
                 self.msg_sel = len(msgs) - 1
-        elif unread:
+        elif unread and self.counts_unread(key, msg):
             self.unread[key] = self.unread.get(key, 0) + 1
         self.dirty = True
 

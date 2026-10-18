@@ -231,11 +231,16 @@ App-side preferences (show repeaters, last used serial port / BLE address) are s
 `~/.config/mcorechat/config.json`. Radio-side settings stay on the device.
 
 Focus: the app starts with the list on the left focused. Up/Down move through channels, contacts and the Console entries,
-and `Enter` opens the **context menu** of the selected item (channels: Chat, Details / share key, Clear history, Remove
-channel; contacts: see below; Log and Radio: Browse, Clear). `Tab` moves to the input on the right (typing from the list
+and `Enter` opens the **context menu** of the selected item (channels: see below; contacts: see below; Log and Radio: Browse, Clear). `Tab` moves to the input on the right (typing from the list
 does the same), where `Enter` sends. `Tab` again moves to the message list: Up/Down/PgUp/PgDn highlight a message and
 `Enter` shows sender, key, times, route, SNR/RSSI, delivery status and the full text. A further `Tab` returns to the list;
 `Esc` goes back one step (messages > input > list).
+
+Channel menu: *Chat*; *Notifications* (all / mentions only / none: decides whether new messages light up the channel in the
+list; Enter cycles it); *Rename channel* (private channels only, the key stays); *Message retention* (keep the last 50 / 100 /
+250 / 500 messages, Enter cycles it); *Participants / blocked* (who has posted, with message counts); *Block / unblock
+sender* (type the name as shown in the channel; blocked senders' new messages are dropped); *Details / share key*; *Clear
+history* (same as `/clear`); *Remove channel*. These per-channel settings are stored in the config file, keyed by channel name.
 
 Contact menu (`Enter` in the list, `F8` or `/contact`, on a selected contact or repeater): Details, Ping (zero-hop trace), Trace path
 (over the stored path and back), Discover route, Set path, Reset path and Remove contact (asks first). Ping and

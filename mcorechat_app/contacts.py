@@ -40,13 +40,10 @@ class ContactsMixin:
         ('Reset path', 'resetpath'), ('Remove contact', 'remove'),
     )
 
-    CHANNEL_ACTIONS = (('Chat', 'chat'), ('Details / share key', 'chdetails'),
-                       ('Clear history', 'clear'), ('Remove channel', 'chremove'))
-
     def menu_actions(self) -> tuple:
         key = self.selected or ('x',)
         if key[0] == 'c':
-            return tuple(a for a in self.CHANNEL_ACTIONS if not (a[1] == 'chremove' and key[1] == 0))
+            return self.chan_actions(key)
         if key[0] in ('l', 'r'):
             return (('Browse lines' if key[0] == 'l' else 'Browse packets', 'browse'), ('Clear', 'clear'))
         return self.contact_menu_actions()
@@ -93,6 +90,8 @@ class ContactsMixin:
             self.history[key] = []
             self.unread.pop(key, None)
             self.status = f'cleared {self.name_for(key)}'
+        elif action in ('notify', 'keep', 'people', 'block', 'rename'):
+            await self.channel_action(action, key)
         elif action == 'chdetails':
             self.show(f'Channel: {self.name_for(key)}', self.channel_details(key[1]))
         elif action == 'chremove':
@@ -314,8 +313,9 @@ class ContactsMixin:
         elif k == curses.KEY_DOWN:
             self.cmenu_sel = min(n - 1, self.cmenu_sel + 1)
         elif k == '\n':
-            self.cmenu_open = False
-            await self.item_action(self.menu_actions()[self.cmenu_sel][1])
+            act = self.menu_actions()[self.cmenu_sel][1]
+            self.cmenu_open = act in ('notify', 'keep')      # settings that cycle keep the menu open
+            await self.item_action(act)
         elif isinstance(k, str) and len(k) == 1 and ord(k) in (CTRL_Q, CTRL_C):
             self.quit = True
         self.dirty = True
