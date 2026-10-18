@@ -64,6 +64,8 @@ class App(ConnectionMixin, MessagingMixin, SettingsMixin, ContactsMixin, Command
     @status.setter
     def status(self, text: str):
         self._status = text
+        # usage hints are only worth a glance: drop them after a few seconds
+        self._status_expiry = time.monotonic() + USAGE_SECONDS if text.startswith('usage') else None
         log.info(text)
 
     def __init__(self, args):

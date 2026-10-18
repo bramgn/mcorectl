@@ -10,6 +10,7 @@ import glob
 import json
 import logging
 import textwrap
+import time
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 
@@ -22,6 +23,7 @@ CONFIG_FILE = os.path.expanduser('~/.config/mcorechat/config.json')
 HISTORY_FILE = os.path.expanduser('~/.config/mcorechat/history.json')
 RX_KEY = ('r', 0)           # the RX log is a pseudo-conversation of received packets
 MAX_RETRIES = 5
+USAGE_SECONDS = 5           # how long a usage hint stays in the title bar
 HISTORY_KEEP = 500          # messages kept per conversation
 SIDEBAR_W = 24
 MAX_CHANNELS = 8

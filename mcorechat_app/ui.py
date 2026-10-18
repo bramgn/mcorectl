@@ -219,7 +219,7 @@ class UiMixin:
         room = w - 1 - len(title) - 2
         if room > 8 and self.status:
             msg = self.status if len(self.status) <= room else self.status[:room - 1] + '…'
-            scr.addnstr(0, w - 1 - len(msg) - 1, msg, room, theme.result_attr(msg, theme.REV))
+            scr.addnstr(0, w - 1 - len(msg) - 1, msg, room, theme.result_attr(msg, theme.REV, red=False))
 
         # messages
         lines = self.render_lines(mw)

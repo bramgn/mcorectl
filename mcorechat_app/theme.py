@@ -19,11 +19,11 @@ BAD_WORDS = ('fail', 'not sent', 'error', 'no reply', 'timed out', 'incomplete',
 GOOD_WORDS = ('reachable', 'saved', 'route discovered', 'created', 'removed')
 
 
-def result_attr(text: str, base: int) -> int:
-    """Green for successful results, red for failed ones, else base."""
+def result_attr(text: str, base: int, red: bool = True) -> int:
+    """Green for successful results, red for failed ones (if `red`), else base."""
     t = text.lower()
     if any(x in t for x in BAD_WORDS):
-        return BAD_BAR
+        return BAD_BAR if red else base
     if any(x in t for x in GOOD_WORDS):
         return GOOD_BAR
     return base
