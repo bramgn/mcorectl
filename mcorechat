@@ -284,6 +284,8 @@ class App:
         self.log_kind = 'log'                # 'log' (F7) or 'rx' (F9) share one viewer
         self.signal: dict[str, tuple] = {}   # key prefix -> (time, snr, rssi, source) from adverts
         self.rx_lines: collections.deque[str] = collections.deque(maxlen=LOG_LINES)
+        self.rx_data: collections.deque[dict] = collections.deque(maxlen=LOG_LINES)  # parallel to rx_lines
+        self.rx_back = 0                     # selected packet, counted from the newest
         self.radio_lock = asyncio.Lock()     # the library can't tell concurrent replies apart
         self.kill = ''                       # readline kill ring (one slot)
         self.confirm_quit = False
@@ -863,6 +865,7 @@ class App:
 
     def open_log(self, kind='log'):
         self.log_open, self.log_scroll, self.log_kind = True, 0, kind
+        self.rx_back = 0
 
     async def drain_queue(self, mc):
         """Fetch everything the radio queued while we were away (the library fetches only one)."""
@@ -895,7 +898,7 @@ class App:
         ('F5', 'reload contacts and channels'),
         ('F6', 'show / hide repeaters'),
         ('F7', 'log console'),
-        ('F9', 'RX log (every packet heard)'),
+        ('F9', 'RX log: Up/Down select, Enter = packet details'),
         ('F8', 'contact menu: details, ping, trace, path, remove'),
         ('F10', 'quit (asks to confirm)'),
         ('^Q, ^C', 'quit immediately'),
@@ -1520,6 +1523,51 @@ class App:
                     REV | curses.A_DIM)
         curses.curs_set(0)
 
+    def show_packet(self, p: dict):
+        """Details window for one RX log packet."""
+        ts = p.get('recv_time')
+        path, size = p.get('path', ''), p.get('path_hash_size', 1) or 1
+        rows = [('Time', datetime.fromtimestamp(ts).strftime('%Y-%m-%d %H:%M:%S') if ts else '-'),
+                ('Type', p.get('payload_typename', '?')),
+                ('Route type', p.get('route_typename', '?')),
+                ('RSSI', f'{p["rssi"]} dBm' if 'rssi' in p else '-'),
+                ('SNR', f'{p["snr"]} dB' if 'snr' in p else '-'),
+                ('Length', f'{p.get("payload_length", "-")} bytes')]
+        n = p.get('path_len', 0)
+        if p.get('payload_typename') == 'TRACE':
+            rows.append(('Hop SNRs', ' > '.join(f'{(int(path[i:i + 2], 16) - (256 if int(path[i:i + 2], 16) > 127 else 0)) / 4:.2f}'
+                                                for i in range(0, len(path), 2)) or '-'))
+        else:
+            hops = [path[i:i + size * 2] for i in range(0, len(path), size * 2)]
+            rows.append(('Path', (f'{n} hop(s): ' + ' > '.join(self.hop_name(h) for h in hops)) if hops
+                         else 'direct' if n == 0 else f'{n} hop(s)'))
+        if p.get('transport_code'):
+            rows.append(('Transport code', p['transport_code']))
+        if 'pkt_hash' in p:
+            rows.append(('Packet hash', str(p['pkt_hash'])))
+        if p.get('payload_typename') == 'ADVERT':
+            key = p.get('adv_key', '')
+            c = next((v for v in self.contacts().values() if key and v['public_key'] == key), None)
+            rows += [('Advert from', p.get('adv_name') or (c or {}).get('adv_name') or '?'),
+                     ('Public key', key),
+                     ('Node type', NODE_TYPES.get(p.get('adv_type'), str(p.get('adv_type', '?'))))]
+            if p.get('adv_timestamp'):
+                rows.append(('Advert time', datetime.fromtimestamp(p['adv_timestamp']).strftime('%Y-%m-%d %H:%M:%S')))
+            if p.get('adv_lat') or p.get('adv_lon'):
+                rows.append(('Position', f'{p.get("adv_lat", 0):.5f}, {p.get("adv_lon", 0):.5f}'))
+        for k, label in (('chan_name', 'Channel'), ('message', 'Message'), ('sender_timestamp', 'Sender time'),
+                         ('attempt', 'Attempt'), ('chan_hash', 'Channel hash'), ('cipher_mac', 'MAC')):
+            if k in p:
+                rows.append((label, str(p[k])))
+        if p.get('payload'):
+            rows.append(('Raw', p['payload']))
+        out = []
+        for a, b in rows:
+            lines = textwrap.wrap(str(b), 52, break_long_words=True) or ['']
+            out.append(f'{a + ":":<16}{lines[0]}')
+            out += [' ' * 16 + l for l in lines[1:]]
+        self.show('Packet', out)
+
     def on_rx_log(self, event):
         p = event.payload
         ptype = p.get('payload_typename', '?')
@@ -1542,6 +1590,9 @@ class App:
             extra = f'  ack {path}'
         if hops:
             extra += '  path ' + ' > '.join(hops)
+        self.rx_data.append(dict(p))
+        if self.rx_back:                     # keep the highlighted packet in place as new ones arrive
+            self.rx_back = min(self.rx_back + 1, len(self.rx_data) - 1)
         self.rx_lines.append(f'{datetime.now():%H:%M:%S} {ptype:<10} rssi {p.get("rssi", "?"):>4} '
                              f'snr {p.get("snr", "?"):>5}{extra}')
         if self.log_open and self.log_kind == 'rx':
@@ -1552,6 +1603,18 @@ class App:
             self.log_open = False
         elif k in (curses.KEY_F7, curses.KEY_F9):
             self.open_log('log' if k == curses.KEY_F7 else 'rx')
+        elif self.log_kind == 'rx' and k in (curses.KEY_UP, curses.KEY_DOWN, curses.KEY_PPAGE,
+                                              curses.KEY_NPAGE, curses.KEY_END, 'G', curses.KEY_HOME, '\n'):
+            last = len(self.rx_data) - 1
+            step = {curses.KEY_UP: 1, curses.KEY_DOWN: -1, curses.KEY_PPAGE: 10, curses.KEY_NPAGE: -10}
+            if k in step:
+                self.rx_back = max(0, min(last, self.rx_back + step[k]))
+            elif k in (curses.KEY_END, 'G'):
+                self.rx_back = 0
+            elif k == curses.KEY_HOME:
+                self.rx_back = max(0, last)
+            elif last >= 0:
+                self.show_packet(self.rx_data[last - self.rx_back])
         elif k == curses.KEY_UP:
             self.log_scroll += 1
         elif k == curses.KEY_DOWN:
@@ -1571,20 +1634,31 @@ class App:
     def draw_log(self, scr, h, w):
         scr.erase()
         rx = self.log_kind == 'rx'
-        lines = []
-        for l in (self.rx_lines if rx else LOG.lines):
-            lines += textwrap.wrap(l, w - 1, subsequent_indent='    ') or ['']
         body = h - 2
-        self.log_scroll = min(self.log_scroll, max(0, len(lines) - body))
-        end = len(lines) - self.log_scroll
-        for y, l in enumerate(lines[max(0, end - body):end]):
-            scr.addnstr(1 + y, 0, l, w - 1)
+        if rx:
+            n = len(self.rx_lines)
+            self.rx_back = max(0, min(self.rx_back, n - 1))
+            off = max(0, self.rx_back - (body - 1))       # scroll so the highlighted packet shows
+            start = max(0, n - off - body)
+            for y, l in enumerate(list(self.rx_lines)[start:n - off]):
+                sel = start + y == n - 1 - self.rx_back
+                scr.addnstr(1 + y, 0, l.ljust(w - 1) if sel else l, w - 1, SEL if sel else curses.A_NORMAL)
+        else:
+            lines = []
+            for l in LOG.lines:
+                lines += textwrap.wrap(l, w - 1, subsequent_indent='    ') or ['']
+            self.log_scroll = min(self.log_scroll, max(0, len(lines) - body))
+            end = len(lines) - self.log_scroll
+            for y, l in enumerate(lines[max(0, end - body):end]):
+                scr.addnstr(1 + y, 0, l, w - 1)
         title = ' RX log — every packet the radio hears' if rx else ' Log'
         scr.addnstr(0, 0, title.ljust(w), w - 1, REV | curses.A_BOLD)
-        other = 'F7 log' if rx else 'F9 RX log'
-        scr.addnstr(h - 1, 0, f' Up/Down/PgUp/PgDn scroll  End latest  {other}  Esc/q close'.ljust(w),
-                    w - 1, REV)
+        keys = ' Up/Down select  Enter details  End latest  F7 log  Esc/q close' if rx else \
+            ' Up/Down/PgUp/PgDn scroll  End latest  F9 RX log  Esc/q close'
+        scr.addnstr(h - 1, 0, keys.ljust(w), w - 1, REV)
         curses.curs_set(0)
+        if self.details is not None:
+            self.draw_details(scr, h, w)
         scr.refresh()
 
     # ---- drawing -----------------------------------------------------------
