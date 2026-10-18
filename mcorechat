@@ -852,7 +852,7 @@ class App:
         ('Keys', ''),
         ('Up / Down', 'select channel / contact'),
         ('PgUp / PgDn', 'scroll history'),
-        ('Enter', 'send message'),
+        ('Enter', 'send message; empty line on a contact = contact menu'),
         ('Tab', 'focus messages: Up/Down, Enter = details'),
         ('F1', 'this help'),
         ('F2', 'settings'),
@@ -1044,6 +1044,10 @@ class App:
             o = ord(k) if len(k) == 1 else -1
             if k == '\n':
                 text, self.buf, self.pos = self.buf.strip(), '', 0
+                if not text and self.selected_contact() is not None:
+                    self.open_contact_menu()      # Enter on an empty line = contact menu
+                    self.dirty = True
+                    return
                 await self.submit(text)
             elif o in (CTRL_Q, CTRL_C):
                 self.quit = True
@@ -1126,6 +1130,10 @@ class App:
         ('Reset path', 'resetpath'), ('Remove contact', 'remove'),
     )
 
+    def menu_actions(self) -> tuple:
+        c = self.selected_contact() or {}
+        return self.CONTACT_ACTIONS if c.get('type') == 2 else (('Chat', 'chat'),) + self.CONTACT_ACTIONS
+
     def selected_contact(self) -> dict | None:
         key = self.selected
         if not key or key[0] != 'd':
@@ -1207,6 +1215,10 @@ class App:
         if c is None:
             return
         name = c.get('adv_name', '?')
+        if action == 'chat':
+            self.focus = 'input'
+            self.dirty = True
+            return
         if action == 'details':
             self.show(f'Contact: {name}', self.contact_details(c))
             return
@@ -1302,7 +1314,7 @@ class App:
             self.select(ents[0][0])
 
     async def handle_cmenu_key(self, k):
-        n = len(self.CONTACT_ACTIONS)
+        n = len(self.menu_actions())
         if k in ('\x1b', curses.KEY_F8):
             self.cmenu_open = False
         elif k == curses.KEY_UP:
@@ -1311,7 +1323,7 @@ class App:
             self.cmenu_sel = min(n - 1, self.cmenu_sel + 1)
         elif k == '\n':
             self.cmenu_open = False
-            await self.contact_action(self.CONTACT_ACTIONS[self.cmenu_sel][1])
+            await self.contact_action(self.menu_actions()[self.cmenu_sel][1])
         elif isinstance(k, str) and len(k) == 1 and ord(k) in (CTRL_Q, CTRL_C):
             self.quit = True
         self.dirty = True
@@ -1332,12 +1344,12 @@ class App:
     def draw_cmenu(self, scr, h, w):
         c = self.selected_contact() or {}
         bw = min(w - 2, 40)
-        bh = len(self.CONTACT_ACTIONS) + 3
+        bh = len(self.menu_actions()) + 3
         y0, x0 = max(0, (h - bh) // 2), max(0, (w - bw) // 2)
         for y in range(bh):
             scr.addstr(y0 + y, x0, ' ' * bw, REV)
         scr.addnstr(y0, x0 + 1, c.get('adv_name', 'Contact'), bw - 2, REV | curses.A_BOLD)
-        for i, (label, _) in enumerate(self.CONTACT_ACTIONS):
+        for i, (label, _) in enumerate(self.menu_actions()):
             attr = SEL if i == self.cmenu_sel else REV
             scr.addnstr(y0 + 1 + i, x0 + 1, label.ljust(bw - 2), bw - 2, attr)
         scr.addnstr(y0 + bh - 1, x0 + 1, 'Enter select · Esc close', bw - 2,
