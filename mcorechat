@@ -506,7 +506,8 @@ class App:
         """Refresh self.channels from the radio; returns the first free slot, if any."""
         chans, free = [], None
         for idx in range(MAX_CHANNELS):
-            r = await self.mc.commands.get_channel(idx)
+            async with self.radio_lock:
+                r = await self.mc.commands.get_channel(idx)
             if r.type == EventType.ERROR:
                 break
             name = r.payload.get('channel_name', '')
@@ -548,7 +549,8 @@ class App:
         if free is None:
             self.status = 'no free channel slot on the radio'
             return
-        r = await self.mc.commands.set_channel(free, name, secret)
+        async with self.radio_lock:
+            r = await self.mc.commands.set_channel(free, name, secret)
         if r.type == EventType.ERROR:
             self.status = f'create channel failed: {describe_error(r.payload)}'
             return
