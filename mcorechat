@@ -74,7 +74,7 @@ BAD_BAR = curses.A_BOLD | curses.A_UNDERLINE
 BAD_WORDS = ('fail', 'not sent', 'error', 'no reply', 'timed out', 'incomplete', 'unknown',
              'not connected', 'no response', 'no free', 'too long', 'must be', 'already exists',
              'usage', 'no repeater', 'ambiguous', 'no stored', 'empty reply')
-GOOD_WORDS = ('reachable', 'connected to', 'saved', 'route discovered', 'created', 'removed')
+GOOD_WORDS = ('reachable', 'saved', 'route discovered', 'created', 'removed')
 
 
 def result_attr(text: str, base: int) -> int:
@@ -753,21 +753,31 @@ class App:
         self.scroll = 0
         self.dirty = True
 
-    COMMAND_NAMES = ('advert', 'channel', 'connect', 'contact', 'disconnect', 'help', 'quit', 'reload',
-                     'log', 'repeaters', 'rxlog', 'settings', 'trace')
+    COMMAND_NAMES = ('advert', 'channel', 'connect', 'contact', 'disconnect', 'help', 'log', 'quit',
+                     'reload', 'repeaters', 'rxlog', 'settings', 'trace')
 
     def complete(self):
         """Tab completion for /commands in the input line."""
         if not self.buf.startswith('/') or ' ' in self.buf or self.buf.startswith('//'):
             return
-        word = self.buf[1:].lower()
-        hits = [c for c in self.COMMAND_NAMES if c.startswith(word)]
-        if not hits:
-            self.status = f'no command matches /{word}'
-            return
-        common = os.path.commonprefix(hits)
-        self.buf = '/' + common
+        cyc = getattr(self, '_tab', None)
+        if cyc and self.buf == cyc[2]:                 # repeated Tab: next match
+            hits, i = cyc[0], (cyc[1] + 1) % len(cyc[0])
+        else:
+            word = self.buf[1:].lower()
+            hits, i = [c for c in self.COMMAND_NAMES if c.startswith(word)], -1
+            if not hits:
+                self.status = f'no command matches /{word}'
+                return
+            common = os.path.commonprefix(hits)
+            if len(hits) > 1 and common == word:       # nothing more to add: start cycling
+                i = 0
+            else:
+                self.buf = '/' + common
+        if i >= 0:
+            self.buf = '/' + hits[i]
         self.pos = len(self.buf)
+        self._tab = (hits, i, self.buf) if len(hits) > 1 else None
         if len(hits) > 1:
             self.status = 'matches: ' + '  '.join('/' + c for c in hits)
 
