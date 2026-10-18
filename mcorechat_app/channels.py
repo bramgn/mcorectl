@@ -126,7 +126,7 @@ class ChannelsMixin:
             return
         secret = self.chan_secrets.get(idx)
         if not secret:
-            self.status = 'channel secret unknown: reload (F5) and try again'
+            self.status = 'channel secret unknown: use /reload and try again'
             return
         if not self.need_radio():
             return

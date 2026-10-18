@@ -90,6 +90,7 @@ class App(ConnectionMixin, MessagingMixin, SettingsMixin, ContactsMixin, Channel
         self.status = 'disconnected'
         self.pending_acks: dict[str, Msg] = {}
         self.dirty = True
+        self.repaint = False
         self.quit = False
         self.settings_open = False
         self.set_sel = 0

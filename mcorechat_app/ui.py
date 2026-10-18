@@ -6,6 +6,10 @@ from . import theme
 
 class UiMixin:
     async def handle_key(self, k):
+        if k == '\x0c':                       # Ctrl-L: full repaint
+            self.repaint = True
+            self.dirty = True
+            return
         if self.details is not None:
             self.details = None
             self.dirty = True
@@ -153,10 +157,6 @@ class UiMixin:
             self.buf = self.buf[:self.pos] + self.buf[self.pos + 1:]
         elif k == curses.KEY_F3:
             await self.toggle_connection()
-        elif k == curses.KEY_F5:
-            asyncio.create_task(self.guarded(self.reload()))
-        elif k == curses.KEY_F6:
-            self.show_repeaters = not self.show_repeaters
         self.dirty = True
 
     def handle_side_key(self, k) -> bool:
@@ -185,6 +185,9 @@ class UiMixin:
 
     def draw(self, scr):
         h, w = scr.getmaxyx()
+        if self.repaint:
+            scr.clear()
+            self.repaint = False
         scr.erase()
         if h < 6 or w < SIDEBAR_W + 20:
             scr.addstr(0, 0, 'terminal too small'[:w - 1])
@@ -267,7 +270,7 @@ class UiMixin:
             scr.addnstr(h - 2, 0, prompt + self.buf[start:start + vis], w - 1)
         keys = [('F1', 'Help'), ('F2', 'Options'),
                 ('F3', 'Disconnect' if self.mc else 'Connect'),
-                ('F5', 'Reload'), ('F6', 'Repeaters'), ('F7', 'Menu'), ('F8', 'Log'), ('F9', 'RX log'), ('F10', 'Quit')]
+                ('F7', 'Menu'), ('F8', 'Log'), ('F9', 'RX log'), ('F10', 'Quit')]
         status = ' ' + '  '.join(f'{k} {v}' for k, v in keys)
         scr.addnstr(h - 1, 0, status.ljust(w), w - 1, theme.REV)
         scr.move(h - 2, min(w - 1, len(prompt) + self.pos - start))
