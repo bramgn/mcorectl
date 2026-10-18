@@ -55,6 +55,7 @@ from meshcore.events import EventType
 DEFAULT_PORT = '/dev/ttyUSB0'
 CONFIG_FILE = os.path.expanduser('~/.config/mcorechat/config.json')
 HISTORY_FILE = os.path.expanduser('~/.config/mcorechat/history.json')
+RX_KEY = ('r', 0)           # the RX log is a pseudo-conversation of received packets
 HISTORY_KEEP = 500          # messages kept per conversation
 SIDEBAR_W = 24
 MAX_CHANNELS = 8
@@ -223,7 +224,7 @@ class App:
 
     def save_history(self):
         raw = {json.dumps(k): [asdict(m) for m in ms[-HISTORY_KEEP:] if m.who != '*']
-               for k, ms in self.history.items() if k}
+               for k, ms in self.history.items() if k and k != RX_KEY}
         raw = {k: v for k, v in raw.items() if v}
         data = json.dumps(raw, default=lambda o: o.hex() if isinstance(o, (bytes, bytearray)) else str(o))
         if data == self._saved_history:
@@ -281,11 +282,7 @@ class App:
         self.help_scroll = 0
         self.log_open = False
         self.log_scroll = 0
-        self.log_kind = 'log'                # 'log' (F7) or 'rx' (F9) share one viewer
         self.signal: dict[str, tuple] = {}   # key prefix -> (time, snr, rssi, source) from adverts
-        self.rx_lines: collections.deque[str] = collections.deque(maxlen=LOG_LINES)
-        self.rx_data: collections.deque[dict] = collections.deque(maxlen=LOG_LINES)  # parallel to rx_lines
-        self.rx_back = 0                     # selected packet, counted from the newest
         self.radio_lock = asyncio.Lock()     # the library can't tell concurrent replies apart
         self.kill = ''                       # readline kill ring (one slot)
         self.confirm_quit = False
@@ -318,7 +315,7 @@ class App:
 
     def entries(self) -> list[tuple[tuple, str]]:
         ch = [(('c', i), n) for i, n in self.channels]
-        return ch + self.contact_entries()
+        return ch + self.contact_entries() + [(RX_KEY, 'RX log')]
 
     def name_for(self, key: tuple) -> str:
         for k, n in self.entries():
@@ -329,7 +326,12 @@ class App:
     def add(self, key: tuple, msg: Msg):
         msgs = self.history.setdefault(key, [])
         msgs.append(msg)
-        if key == self.selected:
+        if key == RX_KEY and len(msgs) > LOG_LINES:
+            del msgs[0]
+            self.msg_sel = max(0, self.msg_sel - 1)
+        if key == RX_KEY and key != self.selected:
+            pass                                  # packets don't count as unread
+        elif key == self.selected:
             self.scroll = 0
             if self.focus == 'msgs' and self.msg_sel == len(msgs) - 2:
                 self.msg_sel = len(msgs) - 1
@@ -615,6 +617,9 @@ class App:
 
     async def send(self, text: str):
         key = self.selected
+        if key == RX_KEY:
+            self.status = 'the RX log is read-only: pick a channel or contact to send'
+            return
         if key is None or not text or not self.need_radio():
             return
         now = int(datetime.now().timestamp())
@@ -821,7 +826,7 @@ class App:
             ('r', 'reload'): self.reload,
             ('s', 'settings'): lambda: setattr(self, 'settings_open', True),
             ('l', 'log', 'console'): self.open_log,
-            ('rx', 'rxlog'): lambda: self.open_log('rx'),
+            ('rx', 'rxlog'): lambda: self.select(RX_KEY),
             ('repeaters',): lambda: setattr(self, 'show_repeaters', not self.show_repeaters),
             ('h', 'help', '?'): self.help,
         }
@@ -863,9 +868,8 @@ class App:
             self.status = 'trace done'
         asyncio.create_task(self.guarded(go()))
 
-    def open_log(self, kind='log'):
-        self.log_open, self.log_scroll, self.log_kind = True, 0, kind
-        self.rx_back = 0
+    def open_log(self):
+        self.log_open, self.log_scroll = True, 0
 
     async def drain_queue(self, mc):
         """Fetch everything the radio queued while we were away (the library fetches only one)."""
@@ -898,7 +902,7 @@ class App:
         ('F5', 'reload contacts and channels'),
         ('F6', 'show / hide repeaters'),
         ('F7', 'log console'),
-        ('F9', 'RX log: Up/Down select, Enter = packet details'),
+        ('F9', 'RX log (Tab: select a packet, Enter = details)'),
         ('F8', 'contact menu: details, ping, trace, path, remove'),
         ('F10', 'quit (asks to confirm)'),
         ('^Q, ^C', 'quit immediately'),
@@ -918,7 +922,7 @@ class App:
         ('/disconnect  /d', 'disconnect from the radio'),
         ('/advert  /a', 'advert menu, or /advert zero|flood'),
         ('/log  /console', 'log console (F7)'),
-        ('/rxlog', 'RX log: every packet heard (F9)'),
+        ('/rxlog', 'show the RX log: every packet heard (F9)'),
         ('/trace  /t', 'trace hops: /trace 78,64,78 or repeater names'),
         ('/reload  /r', 'reload contacts and channels'),
         ('/settings  /s', 'settings'),
@@ -1060,11 +1064,14 @@ class App:
         if self.log_open:
             self.handle_log_key(k)
             return
-        for fkey, kind in ((curses.KEY_F7, 'log'), (curses.KEY_F9, 'rx')):
-            if k == fkey:
-                self.open_log(kind)
-                self.dirty = True
-                return
+        if k == curses.KEY_F9:
+            self.select(RX_KEY)
+            self.dirty = True
+            return
+        if k == curses.KEY_F7:
+            self.open_log()
+            self.dirty = True
+            return
         if self.picker_open:
             await self.handle_picker_key(k)
             return
@@ -1498,7 +1505,10 @@ class App:
         elif k == curses.KEY_END:
             self.msg_sel = len(msgs) - 1
         elif k == '\n' and msgs:
-            self.show('Message details', self.message_details(msgs[self.msg_sel]))
+            if self.selected == RX_KEY:
+                self.show_packet(msgs[self.msg_sel].info)
+            else:
+                self.show('Message details', self.message_details(msgs[self.msg_sel]))
         elif isinstance(k, str) and (k.isprintable() or k == '\x7f'):
             self.focus = 'input'          # start typing: back to the input line
             return False
@@ -1590,31 +1600,16 @@ class App:
             extra = f'  ack {path}'
         if hops:
             extra += '  path ' + ' > '.join(hops)
-        self.rx_data.append(dict(p))
-        if self.rx_back:                     # keep the highlighted packet in place as new ones arrive
-            self.rx_back = min(self.rx_back + 1, len(self.rx_data) - 1)
-        self.rx_lines.append(f'{datetime.now():%H:%M:%S} {ptype:<10} rssi {p.get("rssi", "?"):>4} '
-                             f'snr {p.get("snr", "?"):>5}{extra}')
-        if self.log_open and self.log_kind == 'rx':
-            self.dirty = True
+        now = int(datetime.now().timestamp())
+        self.add(RX_KEY, Msg(now, '', f'{ptype:<9} rssi {p.get("rssi", "?"):>4} '
+                             f'snr {p.get("snr", "?"):>5}{extra}', recv=now, info=dict(p)))
 
     def handle_log_key(self, k):
-        if k in ('\x1b', 'q') or k == (curses.KEY_F7 if self.log_kind == 'log' else curses.KEY_F9):
+        if k in ('\x1b', 'q', curses.KEY_F7):
             self.log_open = False
-        elif k in (curses.KEY_F7, curses.KEY_F9):
-            self.open_log('log' if k == curses.KEY_F7 else 'rx')
-        elif self.log_kind == 'rx' and k in (curses.KEY_UP, curses.KEY_DOWN, curses.KEY_PPAGE,
-                                              curses.KEY_NPAGE, curses.KEY_END, 'G', curses.KEY_HOME, '\n'):
-            last = len(self.rx_data) - 1
-            step = {curses.KEY_UP: 1, curses.KEY_DOWN: -1, curses.KEY_PPAGE: 10, curses.KEY_NPAGE: -10}
-            if k in step:
-                self.rx_back = max(0, min(last, self.rx_back + step[k]))
-            elif k in (curses.KEY_END, 'G'):
-                self.rx_back = 0
-            elif k == curses.KEY_HOME:
-                self.rx_back = max(0, last)
-            elif last >= 0:
-                self.show_packet(self.rx_data[last - self.rx_back])
+        elif k == curses.KEY_F9:
+            self.log_open = False
+            self.select(RX_KEY)
         elif k == curses.KEY_UP:
             self.log_scroll += 1
         elif k == curses.KEY_DOWN:
@@ -1633,32 +1628,18 @@ class App:
 
     def draw_log(self, scr, h, w):
         scr.erase()
-        rx = self.log_kind == 'rx'
+        lines = []
+        for l in LOG.lines:
+            lines += textwrap.wrap(l, w - 1, subsequent_indent='    ') or ['']
         body = h - 2
-        if rx:
-            n = len(self.rx_lines)
-            self.rx_back = max(0, min(self.rx_back, n - 1))
-            off = max(0, self.rx_back - (body - 1))       # scroll so the highlighted packet shows
-            start = max(0, n - off - body)
-            for y, l in enumerate(list(self.rx_lines)[start:n - off]):
-                sel = start + y == n - 1 - self.rx_back
-                scr.addnstr(1 + y, 0, l.ljust(w - 1) if sel else l, w - 1, SEL if sel else curses.A_NORMAL)
-        else:
-            lines = []
-            for l in LOG.lines:
-                lines += textwrap.wrap(l, w - 1, subsequent_indent='    ') or ['']
-            self.log_scroll = min(self.log_scroll, max(0, len(lines) - body))
-            end = len(lines) - self.log_scroll
-            for y, l in enumerate(lines[max(0, end - body):end]):
-                scr.addnstr(1 + y, 0, l, w - 1)
-        title = ' RX log — every packet the radio hears' if rx else ' Log'
-        scr.addnstr(0, 0, title.ljust(w), w - 1, REV | curses.A_BOLD)
-        keys = ' Up/Down select  Enter details  End latest  F7 log  Esc/q close' if rx else \
-            ' Up/Down/PgUp/PgDn scroll  End latest  F9 RX log  Esc/q close'
-        scr.addnstr(h - 1, 0, keys.ljust(w), w - 1, REV)
+        self.log_scroll = min(self.log_scroll, max(0, len(lines) - body))
+        end = len(lines) - self.log_scroll
+        for y, l in enumerate(lines[max(0, end - body):end]):
+            scr.addnstr(1 + y, 0, l, w - 1)
+        scr.addnstr(0, 0, ' Log'.ljust(w), w - 1, REV | curses.A_BOLD)
+        scr.addnstr(h - 1, 0, ' Up/Down/PgUp/PgDn scroll  End latest  F9 RX log  Esc/q close'.ljust(w),
+                    w - 1, REV)
         curses.curs_set(0)
-        if self.details is not None:
-            self.draw_details(scr, h, w)
         scr.refresh()
 
     # ---- drawing -----------------------------------------------------------
@@ -1699,8 +1680,10 @@ class App:
         for k, n in ents[:n_ch]:
             rows.append((n, k))
         rows.append(('Contacts', None))
-        for k, n in ents[n_ch:]:
+        for k, n in ents[n_ch:-1]:
             rows.append((n, k))
+        rows.append(('Radio', None))
+        rows.append((ents[-1][1], ents[-1][0]))
         sel_row = next((i for i, (_, k) in enumerate(rows) if k == self.selected), 0)
         top = max(0, min(sel_row - body_h // 2, len(rows) - body_h))
         for y, (label, key) in enumerate(rows[top:top + body_h]):
