@@ -1132,7 +1132,10 @@ class App:
 
     def menu_actions(self) -> tuple:
         c = self.selected_contact() or {}
-        return self.CONTACT_ACTIONS if c.get('type') == 2 else (('Chat', 'chat'),) + self.CONTACT_ACTIONS
+        if c.get('type') == 2:
+            return self.CONTACT_ACTIONS
+        # only repeaters/rooms answer traces, so no ping for plain clients
+        return (('Chat', 'chat'),) + tuple(a for a in self.CONTACT_ACTIONS if a[1] != 'ping')
 
     def selected_contact(self) -> dict | None:
         key = self.selected
