@@ -242,7 +242,7 @@ list; Enter cycles it); *Rename channel* (private channels only, the key stays);
 sender* (type the name as shown in the channel; blocked senders' new messages are dropped); *Details / share key*; *Clear
 history* (same as `/clear`); *Remove channel*. These per-channel settings are stored in the config file, keyed by channel name.
 
-Colour themes (`/theme` lists them, `/theme <name>` switches, or cycle with Enter in the options): `blue`, `green`, `amber`,
+Colour themes (`/theme` lists them, `/theme <name>` switches, or press Left/Right on the theme row in the options to step through them live): `blue`, `green`, `amber`,
 `light`, `mono`, plus 256-colour themes `vampire`, `fjord`, `sundial`, `harvest`, `shibuya`, `synthwave`, `deepsea`,
 `rosewater`, `mossy` and `parchment` (for light terminals). On terminals with fewer than 256 colours they fall back to the
 nearest basic colours.

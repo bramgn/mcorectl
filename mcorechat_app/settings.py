@@ -190,6 +190,10 @@ class SettingsMixin:
             self.set_sel = max(0, self.set_sel - 1)
         elif k == curses.KEY_DOWN:
             self.set_sel = min(len(self.SETTINGS) - 1, self.set_sel + 1)
+        elif k in (curses.KEY_LEFT, curses.KEY_RIGHT) and which == 'theme':
+            names = list(theme.THEMES)
+            step = 1 if k == curses.KEY_RIGHT else -1
+            self.set_theme(names[(names.index(self.theme) + step) % len(names)])
         elif k in ('\n', ' '):
             if which in ('port', 'name', 'tx_power', 'location'):
                 if which != 'port' and not self.need_radio():
@@ -262,6 +266,6 @@ class SettingsMixin:
             attr = theme.SEL if i == self.set_sel else theme.REV
             scr.addnstr(y0 + 1 + i, x0 + 1, line.ljust(bw - 2), bw - 2, attr)
         hint = 'Enter save · Esc cancel' if self.set_edit is not None else \
-            'Enter change · Esc close'
+            ('←/→ theme · ' if self.SETTINGS[self.set_sel] == 'theme' else '') + 'Enter change · Esc close'
         scr.addnstr(y0 + bh - 1, x0 + 1, hint, bw - 2, theme.REV | curses.A_DIM)
         curses.curs_set(0)
