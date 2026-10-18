@@ -125,8 +125,8 @@ class App(ConnectionMixin, MessagingMixin, SettingsMixin, ContactsMixin, Channel
         LOG.records.clear()
 
     def contact_entries(self) -> list[tuple[tuple, str]]:
-        """Contacts (plus unknown senders we have history with), newest first."""
-        out = []
+        """People first, then repeaters and room servers; each newest first (favourites on top)."""
+        out, infra = [], []
         known = set()
         contacts = sorted(self.contacts().values(),
                           key=lambda c: (c['public_key'][:12] not in self.favorites,
@@ -135,18 +135,20 @@ class App(ConnectionMixin, MessagingMixin, SettingsMixin, ContactsMixin, Channel
             key = ('d', c['public_key'][:12])
             known.add(key)
             is_rep = c.get('type') == 2
+            infra_node = c.get('type') in (2, 3)
             fav = key[1] in self.favorites
             if is_rep and not self.show_repeaters and not fav and key not in self.history:
                 continue
             tag = '★' if fav else ''
-            out.append((key, tag + (c.get('adv_name') or c['public_key'][:8])))
+            (infra if infra_node else out).append((key, tag + (c.get('adv_name') or c['public_key'][:8])))
         for key in self.history:
             if key and key[0] == 'd' and key not in known:
                 out.append((key, key[1][:8]))
-        return out
+        return out + infra
 
-    def is_repeater(self, key: tuple) -> bool:
-        return key[0] == 'd' and any(c.get('type') == 2 for k, c in self.contacts().items()
+    def is_infra(self, key: tuple) -> bool:
+        """Repeater or room server (listed under Repeaters)."""
+        return key[0] == 'd' and any(c.get('type') in (2, 3) for k, c in self.contacts().items()
                                      if k.startswith(key[1]))
 
     def entries(self) -> list[tuple[tuple, str]]:

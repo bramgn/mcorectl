@@ -210,7 +210,7 @@ per-conversation history, unread counts, and send/receive for channels and priva
 ```
 
 Up/Down select a conversation, Enter sends (on an empty line it opens the contact menu for a selected contact), PgUp/PgDn scroll, `/advert zero` / `/advert flood` send an advert directly (or pick *Send advert* in the options, `F2`),
-`F8` / `/log` selects the **Log** entry and `F9` / `/radio` the **Radio** entry under *Console* in the sidebar (Radio lists every packet the radio hears; Tab to highlight a packet, Enter shows its details), `F2` / `/options` the options (send advert, colour theme — blue, green, amber, light, mono —, name, TX power, auto add discovered contacts), `F3` pick a device and connect (or disconnect), `^L` repaint the screen, `^Q` quit. Showing repeaters is an option (`F2` or `/repeaters`); `/reload` re-reads contacts and channels from the radio.
+`F8` / `/log` selects the **Log** entry and `F9` / `/radio` the **Radio** entry under *Console* in the sidebar (Radio lists every packet the radio hears; Tab to highlight a packet, Enter shows its details), `F2` / `/options` the options (send advert, colour theme — blue, green, amber, light, mono —, name, TX power, auto add discovered contacts), `F3` pick a device and connect (or disconnect), `^L` repaint the screen, `^Q` quit. The list has the sections Channels, Contacts, Repeaters (repeaters and room servers) and Console. Showing repeaters is an option (`F2` or `/repeaters`); `/reload` re-reads contacts and channels from the radio.
 
 The app starts disconnected and never connects on its own; press `F3` to list serial ports and BLE devices and choose one. The serial port / BLE address
 can be changed in the options screen (`F2`) before connecting.
