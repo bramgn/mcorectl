@@ -48,7 +48,7 @@ THEMES = {
               ('green', 'default'), ('cyan', 'default'), ('red', 'default')),
     'amber': (('black', 'yellow'), ('yellow', 'black'), ('yellow', 'default'), ('white', 'default'),
               ('yellow', 'default'), ('magenta', 'default'), ('red', 'default')),
-    'light': (('white', 'black'), ('white', 'blue'), ('blue', 'default'), ('red', 'default'),
+    'light': (('white', 'black'), ('white', 'blue'), ('blue', 'default'), ('default', 'default'),
               ('green', 'default'), ('magenta', 'default'), ('red', 'default')),
     'mono': None,
 }
