@@ -92,7 +92,8 @@ class App(ConnectionMixin, MessagingMixin, SettingsMixin, ContactsMixin, Command
         self.settings_open = False
         self.set_sel = 0
         self.picker_open = False
-        self.focus = 'input'                 # 'input' | 'msgs'
+        self.focus = 'side'                  # 'side' (list) | 'input' | 'msgs'
+        self.chan_secrets: dict[int, str] = {}   # slot -> secret hex, from the last channel load
         self.search: dict | None = None      # /search results overlay
         self.msg_sel = 0
         self.last_body_h = 0
@@ -184,7 +185,8 @@ class App(ConnectionMixin, MessagingMixin, SettingsMixin, ContactsMixin, Command
 
     def select(self, key: tuple):
         self.selected = key
-        self.focus = 'input'
+        if self.focus == 'msgs':
+            self.focus = 'input'
         self.unread.pop(key, None)
         self.scroll = 0
         self.dirty = True

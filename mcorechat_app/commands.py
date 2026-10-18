@@ -5,7 +5,7 @@ from . import theme
 
 
 class CommandsMixin:
-    COMMAND_NAMES = ('advert', 'channel', 'connect', 'contact', 'disconnect', 'help', 'log', 'quit',
+    COMMAND_NAMES = ('advert', 'channel', 'connect', 'contact', 'disconnect', 'help', 'log', 'menu', 'quit',
                      'reload', 'repeaters', 'radio', 'search', 'settings', 'trace')
 
     def complete(self):
@@ -41,7 +41,7 @@ class CommandsMixin:
             return
         name, _, arg = text[1:].partition(' ')
         name = name.lower()
-        if name in ('contact', 'ct'):
+        if name in ('contact', 'ct', 'menu'):
             self.open_contact_menu()
             self.dirty = True
             return
@@ -87,10 +87,11 @@ class CommandsMixin:
 
     HELP = (
         ('Keys', ''),
-        ('Up / Down', 'select channel / contact'),
+        ('Up / Down', 'move through the list on the left'),
         ('PgUp / PgDn', 'scroll history'),
-        ('Enter', 'send message; empty line on a contact = contact menu'),
-        ('Tab', 'focus messages: Up/Down, Enter = details, r = resend failed'),
+        ('Enter', 'in the list: context menu; in the input: send'),
+        ('Tab', 'list > input > messages > list (messages: Up/Down, Enter = details, r = resend)'),
+        ('Esc', 'back one step: messages > input > list'),
         ('F1', 'this help'),
         ('F2', 'settings'),
         ('F3', 'choose device and connect / disconnect'),
@@ -99,7 +100,7 @@ class CommandsMixin:
         ('F6', 'show / hide repeaters'),
         ('F7', 'Log: status messages (lights up on problems)'),
         ('F9', 'Radio: every packet heard (Tab: select, Enter = details)'),
-        ('F8', 'contact menu: details, ping, trace, path, remove'),
+        ('F8', 'context menu of the selected item (same as Enter in the list)'),
         ('F10', 'quit (asks to confirm)'),
         ('^Q, ^C', 'quit immediately'),
         ('^A ^E', 'start / end of line'),
@@ -113,7 +114,7 @@ class CommandsMixin:
         ('/help  /h  /?', 'this help'),
         ('/quit  /q', 'quit immediately'),
         ('/channel <name> [key]', 'create / join a channel (#name = public)'),
-        ('/contact', 'contact menu (same as F8)'),
+        ('/contact  /menu', 'context menu of the selected item (F8)'),
         ('/connect  /c', 'choose device and connect'),
         ('/disconnect  /d', 'disconnect from the radio'),
         ('/advert  /a', 'advert menu, or /advert zero|flood'),

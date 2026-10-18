@@ -40,7 +40,18 @@ class ContactsMixin:
         ('Reset path', 'resetpath'), ('Remove contact', 'remove'),
     )
 
+    CHANNEL_ACTIONS = (('Chat', 'chat'), ('Details / share key', 'chdetails'),
+                       ('Clear history', 'clear'), ('Remove channel', 'chremove'))
+
     def menu_actions(self) -> tuple:
+        key = self.selected or ('x',)
+        if key[0] == 'c':
+            return tuple(a for a in self.CHANNEL_ACTIONS if not (a[1] == 'chremove' and key[1] == 0))
+        if key[0] in ('l', 'r'):
+            return (('Browse lines' if key[0] == 'l' else 'Browse packets', 'browse'), ('Clear', 'clear'))
+        return self.contact_menu_actions()
+
+    def contact_menu_actions(self) -> tuple:
         c = self.selected_contact() or {}
         fav = ('Remove favorite' if c.get('public_key', '')[:12] in self.favorites
                else 'Add favorite', 'favorite')
@@ -58,11 +69,75 @@ class ContactsMixin:
         return next((v for k, v in self.contacts().items() if k.startswith(key[1])), None)
 
     def open_contact_menu(self):
-        if self.selected_contact() is None:
-            self.status = 'select a contact first' if (self.selected or ('x',))[0] != 'd' \
-                else 'not in the contact list'
+        """Context menu for whatever is selected in the list: channel, contact, Log or Radio."""
+        key = self.selected
+        if key is None:
+            self.status = 'nothing selected'
+        elif key[0] == 'd' and self.selected_contact() is None:
+            self.status = 'not in the contact list'
+        else:
+            self.cmenu_open, self.cmenu_sel = True, 0
+
+    async def item_action(self, action: str):
+        key = self.selected
+        if key is None:
             return
-        self.cmenu_open, self.cmenu_sel = True, 0
+        if key[0] == 'd':
+            await self.contact_action(action)
+            return
+        if action == 'chat':
+            self.focus = 'input'
+        elif action == 'browse':
+            self.focus, self.msg_sel = 'msgs', max(0, len(self.history.get(key, [])) - 1)
+        elif action == 'clear':
+            self.history[key] = []
+            self.unread.pop(key, None)
+            self.status = f'cleared {self.name_for(key)}'
+        elif action == 'chdetails':
+            self.show(f'Channel: {self.name_for(key)}', self.channel_details(key[1]))
+        elif action == 'chremove':
+            if self.need_radio():
+                name = self.name_for(key)
+                self.confirm_remove = {'label': f'Remove channel {name}',
+                                       'run': lambda: self.apply_remove_channel(key[1], name)}
+        self.dirty = True
+
+    def channel_details(self, idx: int) -> list[str]:
+        name = next((n for i, n in self.channels if i == idx), '?')
+        secret = self.chan_secrets.get(idx, '')
+        rows = [('Name', name), ('Slot', str(idx))]
+        if name.startswith('#'):
+            rows.append(('Kind', 'public hashtag channel (key derived from the name)'))
+            rows.append(('Join with', f'/channel {name}'))
+        else:
+            rows.append(('Kind', 'private channel'))
+            rows.append(('Secret', secret or '-'))
+            if secret:
+                rows.append(('Join with', f'/channel {name} {secret}'))
+        out = []
+        for a, b in rows:
+            lines = textwrap.wrap(b, 52, break_long_words=True) or ['']
+            out.append(f'{a + ":":<12}{lines[0]}')
+            out += [' ' * 12 + l for l in lines[1:]]
+        if secret and not name.startswith('#'):
+            out += ['', 'Anyone with this secret can read and post in the channel.']
+        return out
+
+    async def apply_remove_channel(self, idx: int, name: str):
+        if not self.need_radio():
+            return
+        async with self.radio_lock:
+            r = await self.mc.commands.set_channel(idx, '', bytes(16))
+        if r.type == EventType.ERROR:
+            self.status = f'remove failed: {describe_error(r.payload)}'
+            return
+        self.history.pop(('c', idx), None)
+        self.chan_secrets.pop(idx, None)
+        await self.load_channels()
+        self.status = f'removed channel {name}'
+        ents = self.entries()
+        if ents:
+            self.select(ents[0][0])
 
     def last_signal(self, c: dict) -> tuple | None:
         """Newest (time, snr, rssi, source) heard from this contact: a message or an advert."""
@@ -150,7 +225,7 @@ class ContactsMixin:
             self.dirty = True
             return
         if action == 'remove':
-            self.confirm_remove = {'contact': c}
+            self.confirm_remove = {'label': f'Remove {name}', 'run': lambda: self.apply_remove(c)}
             self.dirty = True
             return
         if action == 'setpath':
@@ -240,7 +315,7 @@ class ContactsMixin:
             self.cmenu_sel = min(n - 1, self.cmenu_sel + 1)
         elif k == '\n':
             self.cmenu_open = False
-            await self.contact_action(self.menu_actions()[self.cmenu_sel][1])
+            await self.item_action(self.menu_actions()[self.cmenu_sel][1])
         elif isinstance(k, str) and len(k) == 1 and ord(k) in (CTRL_Q, CTRL_C):
             self.quit = True
         self.dirty = True
@@ -259,13 +334,12 @@ class ContactsMixin:
         self.dirty = True
 
     def draw_cmenu(self, scr, h, w):
-        c = self.selected_contact() or {}
         bw = min(w - 2, 40)
         bh = len(self.menu_actions()) + 3
         y0, x0 = max(0, (h - bh) // 2), max(0, (w - bw) // 2)
         for y in range(bh):
             scr.addstr(y0 + y, x0, ' ' * bw, theme.REV)
-        scr.addnstr(y0, x0 + 1, c.get('adv_name', 'Contact'), bw - 2, theme.REV | curses.A_BOLD)
+        scr.addnstr(y0, x0 + 1, self.name_for(self.selected), bw - 2, theme.REV | curses.A_BOLD)
         for i, (label, _) in enumerate(self.menu_actions()):
             attr = theme.SEL if i == self.cmenu_sel else theme.REV
             scr.addnstr(y0 + 1 + i, x0 + 1, label.ljust(bw - 2), bw - 2, attr)

@@ -150,6 +150,9 @@ class ConnectionMixin:
             name = r.payload.get('channel_name', '')
             if name:
                 chans.append((idx, name))
+                sec = r.payload.get('channel_secret')
+                if sec:
+                    self.chan_secrets[idx] = sec.hex() if isinstance(sec, (bytes, bytearray)) else str(sec)
             elif free is None:
                 free = idx
         self.channels = chans

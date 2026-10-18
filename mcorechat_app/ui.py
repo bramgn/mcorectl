@@ -35,8 +35,8 @@ class UiMixin:
             return
         if self.confirm_remove:
             if k in ('y', 'Y'):
-                c, self.confirm_remove = self.confirm_remove['contact'], None
-                await self.apply_remove(c)
+                run, self.confirm_remove = self.confirm_remove['run'], None
+                await run()
             elif k in ('n', 'N', '\x1b', '\n'):
                 self.confirm_remove = None
             self.dirty = True
@@ -75,16 +75,14 @@ class UiMixin:
         if self.settings_open:
             await self.handle_settings_key(k)
             return
+        if self.focus == 'side' and self.handle_side_key(k):
+            return
         if self.focus == 'msgs' and self.handle_msg_focus_key(k):
             return
         if isinstance(k, str):
             o = ord(k) if len(k) == 1 else -1
             if k == '\n':
                 text, self.buf, self.pos = self.buf.strip(), '', 0
-                if not text and self.selected_contact() is not None:
-                    self.open_contact_menu()      # Enter on an empty line = contact menu
-                    self.dirty = True
-                    return
                 await self.submit(text)
             elif o in (CTRL_Q, CTRL_C):
                 self.quit = True
@@ -94,6 +92,10 @@ class UiMixin:
                 elif self.history.get(self.selected):
                     self.focus = 'msgs'
                     self.msg_sel = len(self.history[self.selected]) - 1
+                else:
+                    self.focus = 'side'
+            elif k == '\x1b':
+                self.focus = 'side'
             elif k in ('\x7f', '\b'):
                 if self.pos:
                     self.buf = self.buf[:self.pos - 1] + self.buf[self.pos:]
@@ -158,6 +160,30 @@ class UiMixin:
         elif k == curses.KEY_F6:
             self.show_repeaters = not self.show_repeaters
         self.dirty = True
+
+    def handle_side_key(self, k) -> bool:
+        """Keys while the list on the left has focus; returns False to fall through to the input."""
+        if k in (curses.KEY_UP, '\x10'):
+            self.move(-1)
+        elif k in (curses.KEY_DOWN, '\x0e'):
+            self.move(1)
+        elif k == curses.KEY_PPAGE:
+            self.scroll += 5
+        elif k == curses.KEY_NPAGE:
+            self.scroll = max(0, self.scroll - 5)
+        elif k == '\n':
+            self.open_contact_menu()
+        elif k == '\t':
+            self.focus = 'input'
+        elif k == '\x1b':
+            pass
+        elif isinstance(k, str) and not (len(k) == 1 and ord(k) in (CTRL_Q, CTRL_C)):
+            self.focus = 'input'              # typing from the list starts a message
+            return False
+        else:
+            return False
+        self.dirty = True
+        return True
 
     def draw(self, scr):
         h, w = scr.getmaxyx()
@@ -237,14 +263,17 @@ class UiMixin:
         prompt = '> '
         vis = w - len(prompt) - 1
         start = max(0, self.pos - vis + 1)
-        scr.addnstr(h - 2, 0, prompt + self.buf[start:start + vis], w - 1)
+        if self.focus == 'side' and not self.buf:
+            scr.addnstr(h - 2, 0, 'Enter: menu · Tab: write a message · type to start one', w - 1, curses.A_DIM)
+        else:
+            scr.addnstr(h - 2, 0, prompt + self.buf[start:start + vis], w - 1)
         keys = [('F1', 'Help'), ('F2', 'Settings'),
                 ('F3', 'Disconnect' if self.mc else 'Connect'), ('F4', 'Advert'),
                 ('F5', 'Reload'), ('F6', 'Repeaters'), ('F7', 'Log'), ('F8', 'Contact'), ('F9', 'RX log'), ('F10', 'Quit')]
         status = ' ' + '  '.join(f'{k} {v}' for k, v in keys)
         scr.addnstr(h - 1, 0, status.ljust(w), w - 1, theme.REV)
         scr.move(h - 2, min(w - 1, len(prompt) + self.pos - start))
-        curses.curs_set(0 if self.focus == 'msgs' else 1)
+        curses.curs_set(1 if self.focus == 'input' else 0)
         if self.settings_open:
             self.draw_settings(scr, h, w)
         if self.picker_open:
@@ -262,8 +291,7 @@ class UiMixin:
         if self.ask:
             self.draw_ask(scr, h, w)
         if self.confirm_remove:
-            c = self.confirm_remove['contact']
-            msg = f' Remove {c.get("adv_name", "?")}?  [y] yes  [n/Esc] no '
+            msg = f' {self.confirm_remove["label"]}?  [y] yes  [n/Esc] no '
             y0, x0 = h // 2, max(0, (w - len(msg)) // 2)
             scr.addnstr(y0, x0, msg, w - 1 - x0, theme.REV | curses.A_BOLD)
             curses.curs_set(0)

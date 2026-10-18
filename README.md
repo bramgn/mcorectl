@@ -230,28 +230,14 @@ free radio slot (8 max) and is selected.
 App-side preferences (show repeaters, last used serial port / BLE address) are saved in
 `~/.config/mcorechat/config.json`. Radio-side settings stay on the device.
 
-Message details: press `Tab` (on an empty line or one not starting with `/`) to move focus to the message list, use
-Up/Down/PgUp/PgDn to highlight a message and `Enter` to see sender, key, times, route, SNR/RSSI, delivery status and
-the full text. `Tab` or `Esc` returns to the input; typing a character does too.
+Focus: the app starts with the list on the left focused. Up/Down move through channels, contacts and the Console entries,
+and `Enter` opens the **context menu** of the selected item (channels: Chat, Details / share key, Clear history, Remove
+channel; contacts: see below; Log and Radio: Browse, Clear). `Tab` moves to the input on the right (typing from the list
+does the same), where `Enter` sends. `Tab` again moves to the message list: Up/Down/PgUp/PgDn highlight a message and
+`Enter` shows sender, key, times, route, SNR/RSSI, delivery status and the full text. A further `Tab` returns to the list;
+`Esc` goes back one step (messages > input > list).
 
-Code layout: `mcorechat` is a small launcher; the program lives in the `mcorechat_app/` package next to it
-(`app.py` state and conversation model, `connection.py`, `messaging.py`, `contacts.py`, `settings.py`, `commands.py`,
-`ui.py` keys and drawing, `theme.py` colours, `cli.py` entry point). Keep the two together; the symlink made by
-`install.sh` works because the launcher resolves its real location.
-
-Favorites: the contact menu has Add/Remove favorite; favorites are marked `★`, sorted to the top of the contact list
-(also when repeaters are hidden) and remembered in the config file.
-
-Search: `/search <text>` (`/f`) finds the text in every conversation; Enter jumps to the message.
-
-Delivery and retries: the **Send retries** setting (F2, 0-5, default 1) controls how often a send is repeated when the
-radio rejects it, and how often an unacknowledged private message is resent (same timestamp, so the recipient does not
-see duplicates) before it is marked failed. In the message list (`Tab`), `r` resends a failed message.
-
-Settings (`F2`) also has "Connect on startup" (off by default): when on, `mcorechat` connects to the saved
-serial port / BLE address by itself at launch.
-
-Contact menu (`F8` or `/contact`, on a selected contact or repeater): Details, Ping (zero-hop trace), Trace path
+Contact menu (`Enter` in the list, `F8` or `/contact`, on a selected contact or repeater): Details, Ping (zero-hop trace), Trace path
 (over the stored path and back), Discover route, Set path, Reset path and Remove contact (asks first). Ping and
 trace only get answers from repeaters / room servers.
 

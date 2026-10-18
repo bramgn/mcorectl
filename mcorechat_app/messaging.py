@@ -222,7 +222,9 @@ class MessagingMixin:
         """Keys while the message list has focus; returns False to fall through to the input."""
         msgs = self.history.get(self.selected, [])
         page = max(1, self.last_body_h // 2)
-        if k in ('\t', '\x1b'):
+        if k == '\t':
+            self.focus = 'side'
+        elif k == '\x1b':
             self.focus = 'input'
         elif k == curses.KEY_UP:
             self.msg_sel = max(0, self.msg_sel - 1)
