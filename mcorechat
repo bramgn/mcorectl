@@ -69,6 +69,22 @@ UNREAD = curses.A_BOLD
 ME = curses.A_DIM
 NOTE = curses.A_DIM
 FAIL = curses.A_BOLD
+GOOD_BAR = curses.A_BOLD                 # success / failure on bars and popups
+BAD_BAR = curses.A_BOLD | curses.A_UNDERLINE
+BAD_WORDS = ('fail', 'not sent', 'error', 'no reply', 'timed out', 'incomplete', 'unknown',
+             'not connected', 'no response', 'no free', 'too long', 'must be', 'already exists',
+             'usage', 'no repeater', 'ambiguous', 'no stored', 'empty reply')
+GOOD_WORDS = ('reachable', 'connected to', 'saved', 'route discovered', 'created', 'removed')
+
+
+def result_attr(text: str, base: int) -> int:
+    """Green for successful results, red for failed ones, else base."""
+    t = text.lower()
+    if any(x in t for x in BAD_WORDS):
+        return BAD_BAR
+    if any(x in t for x in GOOD_WORDS):
+        return GOOD_BAR
+    return base
 
 
 C = {n: getattr(curses, 'COLOR_' + n.upper()) for n in
@@ -89,11 +105,12 @@ THEMES = {
 
 
 def init_colors(theme: str = 'blue'):
-    global REV, SEL, HEAD, UNREAD, ME, NOTE, FAIL
+    global REV, SEL, HEAD, UNREAD, ME, NOTE, FAIL, GOOD_BAR, BAD_BAR
     pairs = THEMES.get(theme)
     if pairs is None or not curses.has_colors():
         REV, SEL, HEAD = curses.A_REVERSE, curses.A_REVERSE | curses.A_BOLD, curses.A_BOLD | curses.A_UNDERLINE
         UNREAD, ME, NOTE, FAIL = curses.A_BOLD, curses.A_DIM, curses.A_DIM, curses.A_BOLD
+        GOOD_BAR, BAD_BAR = curses.A_BOLD, curses.A_BOLD | curses.A_UNDERLINE
         return
     curses.start_color()
     curses.use_default_colors()
@@ -106,6 +123,10 @@ def init_colors(theme: str = 'blue'):
     ME = curses.color_pair(5)
     NOTE = curses.color_pair(6)
     FAIL = curses.color_pair(7) | curses.A_BOLD
+    curses.init_pair(8, curses.COLOR_BLACK, curses.COLOR_GREEN)
+    curses.init_pair(9, curses.COLOR_WHITE, curses.COLOR_RED)
+    GOOD_BAR = curses.color_pair(8)
+    BAD_BAR = curses.color_pair(9) | curses.A_BOLD
 LOG_LINES = 1000
 
 
@@ -1461,8 +1482,10 @@ class App:
         for y in range(bh):
             scr.addstr(y0 + y, x0, ' ' * bw, REV)
         scr.addnstr(y0, x0 + 1, self.details_title, bw - 2, REV | curses.A_BOLD)
+        verdicts = self.details_title.startswith(('Trace', 'Ping', 'Route'))
         for i, line in enumerate(rows):
-            scr.addnstr(y0 + 1 + i, x0 + 1, line, bw - 2, REV)
+            scr.addnstr(y0 + 1 + i, x0 + 1, line, bw - 2,
+                        result_attr(line, REV) if verdicts else REV)
         scr.addnstr(y0 + bh - 1, x0 + 1, 'press any key to close', bw - 2,
                     REV | curses.A_DIM)
         curses.curs_set(0)
@@ -1597,7 +1620,7 @@ class App:
         room = w - 1 - len(title) - 2
         if room > 8 and self.status:
             msg = self.status if len(self.status) <= room else self.status[:room - 1] + '…'
-            scr.addnstr(0, w - 1 - len(msg) - 1, msg, room, REV)
+            scr.addnstr(0, w - 1 - len(msg) - 1, msg, room, result_attr(msg, REV))
 
         # messages
         lines = self.render_lines(mw)
