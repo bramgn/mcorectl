@@ -5,7 +5,7 @@ from . import theme
 
 
 class CommandsMixin:
-    COMMAND_NAMES = ('advert', 'channel', 'connect', 'contact', 'disconnect', 'help', 'log', 'menu', 'quit',
+    COMMAND_NAMES = ('advert', 'channel', 'clear', 'connect', 'contact', 'disconnect', 'help', 'log', 'menu', 'quit',
                      'reload', 'repeaters', 'radio', 'search', 'settings', 'trace')
 
     def complete(self):
@@ -71,6 +71,7 @@ class CommandsMixin:
             ('d', 'disconnect'): self.disconnect,
             ('r', 'reload'): self.reload,
             ('s', 'settings'): lambda: setattr(self, 'settings_open', True),
+            ('clear', 'cls'): self.clear_current,
             ('l', 'log', 'console'): lambda: self.select(LOG_KEY),
             ('radio', 'rx', 'rxlog'): lambda: self.select(RX_KEY),
             ('repeaters',): lambda: setattr(self, 'show_repeaters', not self.show_repeaters),
@@ -84,6 +85,17 @@ class CommandsMixin:
                 self.dirty = True
                 return
         self.status = f'unknown command /{name} (try /help)'
+
+    def clear_current(self):
+        """Empty the selected conversation (Log and Radio included)."""
+        key = self.selected
+        if key is None:
+            return
+        self.history[key] = []
+        self.unread.pop(key, None)
+        self.msg_sel = self.scroll = 0
+        if key != LOG_KEY:
+            self.status = f'cleared {self.name_for(key)}'
 
     HELP = (
         ('Keys', ''),
@@ -118,6 +130,7 @@ class CommandsMixin:
         ('/connect  /c', 'choose device and connect'),
         ('/disconnect  /d', 'disconnect from the radio'),
         ('/advert  /a', 'advert menu, or /advert zero|flood'),
+        ('/clear', 'empty the selected conversation (Log, Radio, channel or chat)'),
         ('/log  /console', 'show the Log (F7)'),
         ('/radio  /rxlog', 'show the Radio packet list (F9)'),
         ('/search  /f', 'search all messages: /search <text>'),

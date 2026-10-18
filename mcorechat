@@ -26,7 +26,7 @@ Keys:
 
 Commands (type in the input line, /help lists them):
   /channel <name> [secret-hex]   create a channel (#name joins a public hashtag channel)
-  /quit /connect /disconnect /advert [zero|flood] /trace <hops> /log /radio /reload /settings /repeaters /help
+  /quit /connect /disconnect /advert [zero|flood] /trace <hops> /log /radio /clear /reload /settings /repeaters /help
   Start a message with // to send a literal leading slash.
 
 Usage:
