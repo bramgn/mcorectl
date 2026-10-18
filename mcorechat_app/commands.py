@@ -6,7 +6,7 @@ from . import theme
 
 class CommandsMixin:
     COMMAND_NAMES = ('advert', 'channel', 'clear', 'connect', 'contact', 'disconnect', 'help', 'log', 'menu', 'quit',
-                     'reload', 'repeaters', 'radio', 'search', 'options', 'trace')
+                     'reload', 'repeaters', 'radio', 'search', 'options', 'theme', 'trace')
 
     def complete(self):
         """Tab completion for /commands in the input line."""
@@ -43,6 +43,10 @@ class CommandsMixin:
         name = name.lower()
         if name in ('contact', 'ct', 'menu'):
             self.open_contact_menu()
+            self.dirty = True
+            return
+        if name == 'theme':
+            self.theme_command(arg)
             self.dirty = True
             return
         if name in ('a', 'advert'):
@@ -135,6 +139,7 @@ class CommandsMixin:
         ('/trace  /t', 'trace hops: /trace 78,64,78 or repeater names'),
         ('/reload  /r', 'reload contacts and channels'),
         ('/options  /o  /settings', 'options (F2)'),
+        ('/theme [name]', 'list colour themes / switch to one'),
         ('/repeaters', 'show / hide repeaters'),
         ('//text', 'send a message starting with /'),
     )

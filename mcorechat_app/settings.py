@@ -62,6 +62,26 @@ class SettingsMixin:
         dist = f'{km * 1000:.0f} m' if km < 1 else f'{km:.1f} km' if km < 100 else f'{km:.0f} km'
         return f'{dist} {compass}'
 
+    def set_theme(self, name: str):
+        self.theme = name
+        theme.init_colors(name)
+        self.save_config()
+        self.dirty = True
+
+    def theme_command(self, arg: str):
+        """/theme lists the themes, /theme <name> switches (a unique prefix is enough)."""
+        arg = arg.strip().lower()
+        if not arg:
+            self.show('Colour themes', [f'{"> " if n == self.theme else "  "}{n:<11}{theme.DESCRIPTIONS.get(n, "")}'
+                                        for n in theme.THEMES] + ['', 'Switch with /theme <name>.'])
+            return
+        hits = [n for n in theme.THEMES if n == arg] or [n for n in theme.THEMES if n.startswith(arg)]
+        if len(hits) != 1:
+            self.status = f'no theme "{arg}" (try /theme for the list)' if not hits else \
+                f'"{arg}" is ambiguous: {", ".join(hits)}'
+            return
+        self.set_theme(hits[0])
+
     async def apply_setting(self, which: str, text: str | None = None):
         if which == 'advert':
             self.settings_open = False
@@ -77,9 +97,7 @@ class SettingsMixin:
             return
         if which == 'theme':
             names = list(theme.THEMES)
-            self.theme = names[(names.index(self.theme) + 1) % len(names)]
-            theme.init_colors(self.theme)
-            self.save_config()
+            self.set_theme(names[(names.index(self.theme) + 1) % len(names)])
             return
         if which == 'autoconnect':
             self.auto_connect = not self.auto_connect

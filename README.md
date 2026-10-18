@@ -210,7 +210,7 @@ per-conversation history, unread counts, and send/receive for channels and priva
 ```
 
 Up/Down select a conversation, Enter sends (on an empty line it opens the contact menu for a selected contact), PgUp/PgDn scroll, `/advert zero` / `/advert flood` send an advert directly (or pick *Send advert* in the options, `F2`),
-`F8` / `/log` selects the **Log** entry and `F9` / `/radio` the **Radio** entry under *Console* in the sidebar (Radio lists every packet the radio hears; Tab to highlight a packet, Enter shows its details), `F2` / `/options` the options (send advert, colour theme — blue, green, amber, light, mono —, name, TX power, your location, auto add discovered contacts), `F3` pick a device and connect (or disconnect), `^L` repaint the screen, `^Q` quit. The list has the sections Channels, Contacts, Repeaters (repeaters and room servers) and Console. Showing repeaters is an option (`F2` or `/repeaters`); `/reload` re-reads contacts and channels from the radio.
+`F8` / `/log` selects the **Log** entry and `F9` / `/radio` the **Radio** entry under *Console* in the sidebar (Radio lists every packet the radio hears; Tab to highlight a packet, Enter shows its details), `F2` / `/options` the options (send advert, colour theme, name, TX power, your location, auto add discovered contacts), `F3` pick a device and connect (or disconnect), `^L` repaint the screen, `^Q` quit. The list has the sections Channels, Contacts, Repeaters (repeaters and room servers) and Console. Showing repeaters is an option (`F2` or `/repeaters`); `/reload` re-reads contacts and channels from the radio.
 
 The app starts disconnected and never connects on its own; press `F3` to list serial ports and BLE devices and choose one. The serial port / BLE address
 can be changed in the options screen (`F2`) before connecting.
@@ -241,6 +241,11 @@ list; Enter cycles it); *Rename channel* (private channels only, the key stays);
 250 / 500 messages, Enter cycles it); *Participants / blocked* (who has posted, with message counts); *Block / unblock
 sender* (type the name as shown in the channel; blocked senders' new messages are dropped); *Details / share key*; *Clear
 history* (same as `/clear`); *Remove channel*. These per-channel settings are stored in the config file, keyed by channel name.
+
+Colour themes (`/theme` lists them, `/theme <name>` switches, or cycle with Enter in the options): `blue`, `green`, `amber`,
+`light`, `mono`, plus 256-colour themes `vampire`, `fjord`, `sundial`, `harvest`, `shibuya`, `synthwave`, `deepsea`,
+`rosewater`, `mossy` and `parchment` (for light terminals). On terminals with fewer than 256 colours they fall back to the
+nearest basic colours.
 
 Location: set your own position in the options (`F2`, *Location*, as `lat, lon` in decimal degrees, or `none` to clear). Contact
 details and advert packet details then show the distance and compass direction to any node that advertises a position.
