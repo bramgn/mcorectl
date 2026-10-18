@@ -204,7 +204,8 @@ class ConnectionMixin:
         self.status = f'channel {name} created'
 
     async def load(self):
-        await self.mc.ensure_contacts()
+        async with self.radio_lock:
+            await self.mc.ensure_contacts()
         await self.load_channels()
         if self.selected is None and (e := self.entries()):
             self.select(e[0][0])
@@ -250,8 +251,10 @@ class ConnectionMixin:
     async def reload(self):
         if self.need_radio():
             self.status = 'reloading...'
-            async with self.radio_lock:
-                await self.load()
+            async with self.radio_lock:      # load_channels takes the lock itself, so only the contacts here
+                await self.mc.commands.get_contacts()
+            await self.load_channels()
+            self.dirty = True
             self.status = f'connected to {self.target()}'
 
     def draw_picker(self, scr, h, w):

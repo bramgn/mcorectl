@@ -12,13 +12,12 @@ Keys:
   Tab            complete a /command; otherwise focus the message list
                  (Up/Down select a message, Enter shows details, Tab/Esc back)
   F3             choose a device to connect to (serial / BLE), or disconnect
-  F4             send an advert (zero hop or flood)
   F5             reload contacts and channels from the radio
   F6             show / hide repeaters in the contact list
-  F7             Log (status messages; lights up in the sidebar on problems)
+  F8             Log (status messages; lights up in the sidebar on problems)
   F9             Radio (every packet heard)
-  F8             contact menu (details, ping, trace, path, remove)
-  F2             settings (name, TX power, auto-add contacts, repeaters)
+  F7             context menu (details, ping, trace, path, remove)
+  F2             options (name, TX power, send advert, auto-add contacts, theme, ...)
   F1             help
   Readline keys in the input: ^A ^E ^B ^F ^D ^U ^K ^W ^Y; ^P / ^N switch conversation
   F10            quit (asks for confirmation)
@@ -26,7 +25,7 @@ Keys:
 
 Commands (type in the input line, /help lists them):
   /channel <name> [secret-hex]   create a channel (#name joins a public hashtag channel)
-  /quit /connect /disconnect /advert [zero|flood] /trace <hops> /log /radio /clear /reload /settings /repeaters /help
+  /quit /connect /disconnect /advert [zero|flood] /trace <hops> /log /radio /clear /reload /options /repeaters /help
   Start a message with // to send a literal leading slash.
 
 Usage:

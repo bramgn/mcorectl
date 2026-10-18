@@ -5,7 +5,7 @@ from . import theme
 
 
 class SettingsMixin:
-    SETTINGS = ('port', 'autoconnect', 'name', 'tx_power', 'auto_add', 'repeaters', 'retries', 'theme')
+    SETTINGS = ('port', 'autoconnect', 'name', 'tx_power', 'advert', 'auto_add', 'repeaters', 'retries', 'theme')
 
     def setting_rows(self) -> list[tuple[str, str]]:
         si = (self.mc.self_info if self.mc else None) or {}
@@ -16,6 +16,7 @@ class SettingsMixin:
             ('Connect on startup', onoff(self.auto_connect)),
             ('Device name', dash('name')),
             ('TX power (dBm)', dash('tx_power')),
+            ('Send advert', 'zero hop / flood...'),
             ('Auto add discovered contacts',
              onoff(not si['manual_add_contacts']) if 'manual_add_contacts' in si else '-'),
             ('Show repeaters in list', onoff(self.show_repeaters)),
@@ -24,6 +25,10 @@ class SettingsMixin:
         ]
 
     async def apply_setting(self, which: str, text: str | None = None):
+        if which == 'advert':
+            self.settings_open = False
+            await self.advert()
+            return
         if which == 'repeaters':
             self.show_repeaters = not self.show_repeaters
             return
@@ -127,7 +132,7 @@ class SettingsMixin:
         self.dirty = True
 
     async def handle_advert_key(self, k):
-        if k in ('\x1b', curses.KEY_F4):
+        if k == '\x1b':
             self.advert_menu_open = False
         elif k == curses.KEY_UP:
             self.advert_sel = 0
@@ -161,7 +166,7 @@ class SettingsMixin:
         y0, x0 = max(0, (h - bh) // 2), max(0, (w - bw) // 2)
         for y in range(bh):
             scr.addstr(y0 + y, x0, ' ' * bw, theme.REV)
-        scr.addnstr(y0, x0 + 1, 'Settings', bw - 2, theme.REV | curses.A_BOLD)
+        scr.addnstr(y0, x0 + 1, 'Options', bw - 2, theme.REV | curses.A_BOLD)
         for i, (label, val) in enumerate(rows):
             if i == self.set_sel and self.set_edit is not None:
                 val = self.set_edit + '_'

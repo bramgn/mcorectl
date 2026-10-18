@@ -54,7 +54,7 @@ class UiMixin:
             self.confirm_quit = True
             self.dirty = True
             return
-        if k == curses.KEY_F8 and not (self.picker_open or self.settings_open):
+        if k == curses.KEY_F7 and not (self.picker_open or self.settings_open):
             self.open_contact_menu()
             self.dirty = True
             return
@@ -62,8 +62,8 @@ class UiMixin:
             self.help_open, self.help_scroll = True, 0
             self.dirty = True
             return
-        if k in (curses.KEY_F7, curses.KEY_F9):
-            self.select(LOG_KEY if k == curses.KEY_F7 else RX_KEY)
+        if k in (curses.KEY_F8, curses.KEY_F9):
+            self.select(LOG_KEY if k == curses.KEY_F8 else RX_KEY)
             return
         if self.picker_open:
             await self.handle_picker_key(k)
@@ -153,10 +153,8 @@ class UiMixin:
             self.buf = self.buf[:self.pos] + self.buf[self.pos + 1:]
         elif k == curses.KEY_F3:
             await self.toggle_connection()
-        elif k == curses.KEY_F4:
-            await self.advert()
         elif k == curses.KEY_F5:
-            await self.reload()
+            asyncio.create_task(self.guarded(self.reload()))
         elif k == curses.KEY_F6:
             self.show_repeaters = not self.show_repeaters
         self.dirty = True
@@ -267,9 +265,9 @@ class UiMixin:
             scr.addnstr(h - 2, 0, 'Enter: menu · Tab: write a message · type to start one', w - 1, curses.A_DIM)
         else:
             scr.addnstr(h - 2, 0, prompt + self.buf[start:start + vis], w - 1)
-        keys = [('F1', 'Help'), ('F2', 'Settings'),
-                ('F3', 'Disconnect' if self.mc else 'Connect'), ('F4', 'Advert'),
-                ('F5', 'Reload'), ('F6', 'Repeaters'), ('F7', 'Log'), ('F8', 'Contact'), ('F9', 'RX log'), ('F10', 'Quit')]
+        keys = [('F1', 'Help'), ('F2', 'Options'),
+                ('F3', 'Disconnect' if self.mc else 'Connect'),
+                ('F5', 'Reload'), ('F6', 'Repeaters'), ('F7', 'Menu'), ('F8', 'Log'), ('F9', 'RX log'), ('F10', 'Quit')]
         status = ' ' + '  '.join(f'{k} {v}' for k, v in keys)
         scr.addnstr(h - 1, 0, status.ljust(w), w - 1, theme.REV)
         scr.move(h - 2, min(w - 1, len(prompt) + self.pos - start))

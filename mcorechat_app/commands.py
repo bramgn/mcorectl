@@ -6,7 +6,7 @@ from . import theme
 
 class CommandsMixin:
     COMMAND_NAMES = ('advert', 'channel', 'clear', 'connect', 'contact', 'disconnect', 'help', 'log', 'menu', 'quit',
-                     'reload', 'repeaters', 'radio', 'search', 'settings', 'trace')
+                     'reload', 'repeaters', 'radio', 'search', 'options', 'trace')
 
     def complete(self):
         """Tab completion for /commands in the input line."""
@@ -70,7 +70,7 @@ class CommandsMixin:
             ('c', 'connect'): self.pick_device,
             ('d', 'disconnect'): self.disconnect,
             ('r', 'reload'): self.reload,
-            ('s', 'settings'): lambda: setattr(self, 'settings_open', True),
+            ('o', 'options', 's', 'settings'): lambda: setattr(self, 'settings_open', True),
             ('clear', 'cls'): self.clear_current,
             ('l', 'log', 'console'): lambda: self.select(LOG_KEY),
             ('radio', 'rx', 'rxlog'): lambda: self.select(RX_KEY),
@@ -105,14 +105,13 @@ class CommandsMixin:
         ('Tab', 'list > input > messages > list (messages: Up/Down, Enter = details, r = resend)'),
         ('Esc', 'back one step: messages > input > list'),
         ('F1', 'this help'),
-        ('F2', 'settings'),
+        ('F2', 'options (name, TX power, advert, theme, ...)'),
         ('F3', 'choose device and connect / disconnect'),
-        ('F4', 'send advert (zero hop / flood)'),
         ('F5', 'reload contacts and channels'),
         ('F6', 'show / hide repeaters'),
-        ('F7', 'Log: status messages (lights up on problems)'),
+        ('F7', 'context menu of the selected item (same as Enter in the list)'),
         ('F9', 'Radio: every packet heard (Tab: select, Enter = details)'),
-        ('F8', 'context menu of the selected item (same as Enter in the list)'),
+        ('F8', 'Log: status messages (lights up on problems)'),
         ('F10', 'quit (asks to confirm)'),
         ('^Q, ^C', 'quit immediately'),
         ('^A ^E', 'start / end of line'),
@@ -126,17 +125,17 @@ class CommandsMixin:
         ('/help  /h  /?', 'this help'),
         ('/quit  /q', 'quit immediately'),
         ('/channel <name> [key]', 'create / join a channel (#name = public)'),
-        ('/contact  /menu', 'context menu of the selected item (F8)'),
+        ('/contact  /menu', 'context menu of the selected item (F7)'),
         ('/connect  /c', 'choose device and connect'),
         ('/disconnect  /d', 'disconnect from the radio'),
         ('/advert  /a', 'advert menu, or /advert zero|flood'),
         ('/clear', 'empty the selected conversation (Log, Radio, channel or chat)'),
-        ('/log  /console', 'show the Log (F7)'),
+        ('/log  /console', 'show the Log (F8)'),
         ('/radio  /rxlog', 'show the Radio packet list (F9)'),
         ('/search  /f', 'search all messages: /search <text>'),
         ('/trace  /t', 'trace hops: /trace 78,64,78 or repeater names'),
         ('/reload  /r', 'reload contacts and channels'),
-        ('/settings  /s', 'settings'),
+        ('/options  /o  /settings', 'options (F2)'),
         ('/repeaters', 'show / hide repeaters'),
         ('//text', 'send a message starting with /'),
     )

@@ -53,7 +53,7 @@ def main():
     args.port = args.port or saved.get('port') or DEFAULT_PORT
     locale.setlocale(locale.LC_ALL, '')
     os.environ.setdefault('ESCDELAY', '25')   # ncurses waits 1000ms after Esc by default
-    # keep library log output off the screen; F7 shows it
+    # keep library log output off the screen; F8 shows it
     root = logging.getLogger()
     root.handlers[:] = [LOG]
     root.setLevel(logging.INFO)

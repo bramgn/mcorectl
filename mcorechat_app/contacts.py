@@ -306,7 +306,7 @@ class ContactsMixin:
 
     async def handle_cmenu_key(self, k):
         n = len(self.menu_actions())
-        if k in ('\x1b', curses.KEY_F8):
+        if k in ('\x1b', curses.KEY_F7):
             self.cmenu_open = False
         elif k == curses.KEY_UP:
             self.cmenu_sel = max(0, self.cmenu_sel - 1)

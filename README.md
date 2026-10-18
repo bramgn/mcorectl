@@ -209,14 +209,14 @@ per-conversation history, unread counts, and send/receive for channels and priva
 ./mcorechat --ble <ADDRESS>
 ```
 
-Up/Down select a conversation, Enter sends (on an empty line it opens the contact menu for a selected contact), PgUp/PgDn scroll, `F4` advert (zero hop or flood; `/advert zero` / `/advert flood` skip the menu),
-`F6` show/hide repeaters, `F7` / `/log` selects the **Log** entry and `F9` / `/radio` the **Radio** entry under *Console* in the sidebar (Radio lists every packet the radio hears; Tab to highlight a packet, Enter shows its details), `F2` settings (colour theme — blue, green, amber, light, mono —, name, TX power, auto add discovered contacts), `F3` pick a device and connect (or disconnect), `F5` reload, `^Q` quit.
+Up/Down select a conversation, Enter sends (on an empty line it opens the contact menu for a selected contact), PgUp/PgDn scroll, `/advert zero` / `/advert flood` send an advert directly (or pick *Send advert* in the options, `F2`),
+`F6` show/hide repeaters, `F8` / `/log` selects the **Log** entry and `F9` / `/radio` the **Radio** entry under *Console* in the sidebar (Radio lists every packet the radio hears; Tab to highlight a packet, Enter shows its details), `F2` / `/options` the options (send advert, colour theme — blue, green, amber, light, mono —, name, TX power, auto add discovered contacts), `F3` pick a device and connect (or disconnect), `F5` reload, `^Q` quit.
 
 The app starts disconnected and never connects on its own; press `F3` to list serial ports and BLE devices and choose one. The serial port / BLE address
-can be changed in the settings screen (`F2`) before connecting.
+can be changed in the options screen (`F2`) before connecting.
 
 Slash commands work in the input line: `/quit` (`/q`), `/connect`, `/disconnect`, `/advert`, `/log` (`/console`), `/clear` (empties the selected conversation, e.g. the Log), `/trace 78,64,78` (hex hashes or repeater names), `/reload`,
-`/settings`, `/repeaters`, `/help`. `F1` or `/help` shows the full key and command list; `F10` quits.
+`/options`, `/repeaters`, `/help`. `F1` or `/help` shows the full key and command list; `F10` quits.
 `Tab` completes a command (listing the matches when ambiguous). Start a message with `//` to send a literal leading `/`.
 
 The input line understands the usual readline keys (`^A ^E ^B ^F ^D ^U ^K ^W ^Y`); `^P`/`^N` switch conversation.
@@ -242,7 +242,7 @@ list; Enter cycles it); *Rename channel* (private channels only, the key stays);
 sender* (type the name as shown in the channel; blocked senders' new messages are dropped); *Details / share key*; *Clear
 history* (same as `/clear`); *Remove channel*. These per-channel settings are stored in the config file, keyed by channel name.
 
-Contact menu (`Enter` in the list, `F8` or `/contact`, on a selected contact or repeater): Details, Ping (zero-hop trace), Trace path
+Contact menu (`Enter` in the list, `F7` or `/contact`, on a selected contact or repeater): Details, Ping (zero-hop trace), Trace path
 (over the stored path and back), Discover route, Set path, Reset path and Remove contact (asks first). Ping and
 trace only get answers from repeaters / room servers.
 
