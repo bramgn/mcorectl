@@ -5,7 +5,7 @@ from . import theme
 
 
 class SettingsMixin:
-    SETTINGS = ('port', 'autoconnect', 'name', 'tx_power', 'location', 'advert', 'auto_add', 'repeaters', 'retries', 'theme')
+    SETTINGS = ('port', 'autoconnect', 'name', 'tx_power', 'location', 'advert', 'reboot', 'auto_add', 'repeaters', 'retries', 'theme')
 
     def setting_rows(self) -> list[tuple[str, str]]:
         si = (self.mc.self_info if self.mc else None) or {}
@@ -18,6 +18,7 @@ class SettingsMixin:
             ('TX power (dBm)', dash('tx_power')),
             ('Location (lat, lon)', self.my_position_text()),
             ('Send advert', 'zero hop / flood...'),
+            ('Reboot radio', 'asks first'),
             ('Auto add discovered contacts',
              onoff(not si['manual_add_contacts']) if 'manual_add_contacts' in si else '-'),
             ('Show repeaters in list', onoff(self.show_repeaters)),
@@ -62,6 +63,23 @@ class SettingsMixin:
         dist = f'{km * 1000:.0f} m' if km < 1 else f'{km:.1f} km' if km < 100 else f'{km:.0f} km'
         return f'{dist} {compass}'
 
+    def ask_reboot(self):
+        if self.need_radio():
+            self.confirm_remove = {'label': 'Reboot the radio (the link drops, reconnect afterwards)',
+                                   'run': self.reboot_radio}
+            self.dirty = True
+
+    async def reboot_radio(self):
+        if not self.need_radio():
+            return
+        self.status = 'rebooting the radio...'
+        try:
+            async with self.radio_lock:
+                await asyncio.wait_for(self.mc.commands.reboot(), 3)   # the radio may not answer
+        except (asyncio.TimeoutError, OSError):
+            pass
+        await self.disconnect('radio rebooting: connect again in a few seconds (F3)')
+
     def set_theme(self, name: str):
         self.theme = name
         theme.init_colors(name)
@@ -83,6 +101,10 @@ class SettingsMixin:
         self.set_theme(hits[0])
 
     async def apply_setting(self, which: str, text: str | None = None):
+        if which == 'reboot':
+            self.settings_open = False
+            self.ask_reboot()
+            return
         if which == 'advert':
             self.settings_open = False
             await self.advert()

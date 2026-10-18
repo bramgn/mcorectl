@@ -247,6 +247,8 @@ Colour themes (`/theme` lists them, `/theme <name>` switches, or cycle with Ente
 `rosewater`, `mossy` and `parchment` (for light terminals). On terminals with fewer than 256 colours they fall back to the
 nearest basic colours.
 
+`/reboot` (or *Reboot radio* in the options) restarts the radio after a confirmation; the link drops and you reconnect with `F3`.
+
 Location: set your own position in the options (`F2`, *Location*, as `lat, lon` in decimal degrees, or `none` to clear). Contact
 details and advert packet details then show the distance and compass direction to any node that advertises a position.
 
