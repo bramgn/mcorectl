@@ -234,6 +234,11 @@ Message details: press `Tab` (on an empty line or one not starting with `/`) to 
 Up/Down/PgUp/PgDn to highlight a message and `Enter` to see sender, key, times, route, SNR/RSSI, delivery status and
 the full text. `Tab` or `Esc` returns to the input; typing a character does too.
 
+Code layout: `mcorechat` is a small launcher; the program lives in the `mcorechat_app/` package next to it
+(`app.py` state and conversation model, `connection.py`, `messaging.py`, `contacts.py`, `settings.py`, `commands.py`,
+`ui.py` keys and drawing, `theme.py` colours, `cli.py` entry point). Keep the two together; the symlink made by
+`install.sh` works because the launcher resolves its real location.
+
 Favorites: the contact menu has Add/Remove favorite; favorites are marked `★`, sorted to the top of the contact list
 (also when repeaters are hidden) and remembered in the config file.
 

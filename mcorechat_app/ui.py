@@ -1,0 +1,284 @@
+"""UiMixin for the mcorechat App."""
+
+from .common import *
+from . import theme
+
+
+class UiMixin:
+    async def handle_key(self, k):
+        if self.details is not None:
+            self.details = None
+            self.dirty = True
+            return
+        if self.help_open:
+            if k == curses.KEY_UP:
+                self.help_scroll = max(0, self.help_scroll - 1)
+            elif k == curses.KEY_DOWN:
+                self.help_scroll += 1
+            elif k == curses.KEY_PPAGE:
+                self.help_scroll = max(0, self.help_scroll - 10)
+            elif k == curses.KEY_NPAGE:
+                self.help_scroll += 10
+            else:
+                self.help_open = False
+            self.dirty = True
+            return
+        if self.confirm_quit:
+            if k in ('y', 'Y', '\n'):
+                self.quit = True
+            elif k in ('n', 'N', '\x1b', curses.KEY_F10):
+                self.confirm_quit = False
+            self.dirty = True
+            return
+        if self.ask:
+            await self.handle_ask_key(k)
+            return
+        if self.confirm_remove:
+            if k in ('y', 'Y'):
+                c, self.confirm_remove = self.confirm_remove['contact'], None
+                await self.apply_remove(c)
+            elif k in ('n', 'N', '\x1b', '\n'):
+                self.confirm_remove = None
+            self.dirty = True
+            return
+        if self.search:
+            self.handle_search_key(k)
+            return
+        if self.cmenu_open:
+            await self.handle_cmenu_key(k)
+            return
+        if self.advert_menu_open:
+            await self.handle_advert_key(k)
+            return
+        if k == curses.KEY_F10:
+            self.confirm_quit = True
+            self.dirty = True
+            return
+        if k == curses.KEY_F8 and not (self.picker_open or self.settings_open or self.log_open):
+            self.open_contact_menu()
+            self.dirty = True
+            return
+        if k == curses.KEY_F1:
+            self.help_open, self.help_scroll = True, 0
+            self.dirty = True
+            return
+        if self.log_open:
+            self.handle_log_key(k)
+            return
+        if k == curses.KEY_F9:
+            self.select(RX_KEY)
+            self.dirty = True
+            return
+        if k == curses.KEY_F7:
+            self.open_log()
+            self.dirty = True
+            return
+        if self.picker_open:
+            await self.handle_picker_key(k)
+            return
+        if k == curses.KEY_F2 and not self.settings_open:
+            self.settings_open = True
+            self.dirty = True
+            return
+        if self.settings_open:
+            await self.handle_settings_key(k)
+            return
+        if self.focus == 'msgs' and self.handle_msg_focus_key(k):
+            return
+        if isinstance(k, str):
+            o = ord(k) if len(k) == 1 else -1
+            if k == '\n':
+                text, self.buf, self.pos = self.buf.strip(), '', 0
+                if not text and self.selected_contact() is not None:
+                    self.open_contact_menu()      # Enter on an empty line = contact menu
+                    self.dirty = True
+                    return
+                await self.submit(text)
+            elif o in (CTRL_Q, CTRL_C):
+                self.quit = True
+            elif k == '\t':
+                if self.buf.startswith('/') and ' ' not in self.buf:
+                    self.complete()
+                elif self.history.get(self.selected):
+                    self.focus = 'msgs'
+                    self.msg_sel = len(self.history[self.selected]) - 1
+            elif k in ('\x7f', '\b'):
+                if self.pos:
+                    self.buf = self.buf[:self.pos - 1] + self.buf[self.pos:]
+                    self.pos -= 1
+            elif o == 1:                       # ^A  home
+                self.pos = 0
+            elif o == 5:                       # ^E  end
+                self.pos = len(self.buf)
+            elif o == 2:                       # ^B  back
+                self.pos = max(0, self.pos - 1)
+            elif o == 6:                       # ^F  forward
+                self.pos = min(len(self.buf), self.pos + 1)
+            elif o == 4:                       # ^D  delete char
+                self.buf = self.buf[:self.pos] + self.buf[self.pos + 1:]
+            elif o == 21:                      # ^U  kill to start of line
+                self.kill, self.buf, self.pos = self.buf[:self.pos], self.buf[self.pos:], 0
+            elif o == 11:                      # ^K  kill to end of line
+                self.kill, self.buf = self.buf[self.pos:], self.buf[:self.pos]
+            elif o == 23:                      # ^W  kill previous word
+                start = len(self.buf[:self.pos].rstrip())
+                start = self.buf.rfind(' ', 0, start) + 1
+                self.kill, self.buf, self.pos = (self.buf[start:self.pos],
+                                                 self.buf[:start] + self.buf[self.pos:], start)
+            elif o == 25:                      # ^Y  yank
+                self.buf = self.buf[:self.pos] + self.kill + self.buf[self.pos:]
+                self.pos += len(self.kill)
+            elif o == 16:                      # ^P  previous conversation
+                self.move(-1)
+            elif o == 14:                      # ^N  next conversation
+                self.move(1)
+            elif k.isprintable():
+                self.buf = self.buf[:self.pos] + k + self.buf[self.pos:]
+                self.pos += 1
+        elif k == curses.KEY_UP:
+            self.move(-1)
+        elif k == curses.KEY_DOWN:
+            self.move(1)
+        elif k == curses.KEY_PPAGE:
+            self.scroll += 5
+        elif k == curses.KEY_NPAGE:
+            self.scroll = max(0, self.scroll - 5)
+        elif k == curses.KEY_LEFT:
+            self.pos = max(0, self.pos - 1)
+        elif k == curses.KEY_RIGHT:
+            self.pos = min(len(self.buf), self.pos + 1)
+        elif k == curses.KEY_HOME:
+            self.pos = 0
+        elif k == curses.KEY_END:
+            self.pos = len(self.buf)
+        elif k == curses.KEY_BACKSPACE:
+            if self.pos:
+                self.buf = self.buf[:self.pos - 1] + self.buf[self.pos:]
+                self.pos -= 1
+        elif k == curses.KEY_DC:
+            self.buf = self.buf[:self.pos] + self.buf[self.pos + 1:]
+        elif k == curses.KEY_F3:
+            await self.toggle_connection()
+        elif k == curses.KEY_F4:
+            await self.advert()
+        elif k == curses.KEY_F5:
+            await self.reload()
+        elif k == curses.KEY_F6:
+            self.show_repeaters = not self.show_repeaters
+        self.dirty = True
+
+    def draw(self, scr):
+        h, w = scr.getmaxyx()
+        if self.log_open:
+            self.draw_log(scr, h, w)
+            return
+        scr.erase()
+        if h < 6 or w < SIDEBAR_W + 20:
+            scr.addstr(0, 0, 'terminal too small'[:w - 1])
+            scr.refresh()
+            return
+        sw = SIDEBAR_W
+        mw = w - sw - 1
+        body_h = h - 3                      # title row at 0, input + status at bottom
+
+        # sidebar
+        ents = self.entries()
+        rows: list[tuple[str, tuple | None]] = []
+        n_ch = len(self.channels)
+        rows.append(('Channels', None))
+        for k, n in ents[:n_ch]:
+            rows.append((n, k))
+        rows.append(('Contacts', None))
+        for k, n in ents[n_ch:-1]:
+            rows.append((n, k))
+        rows.append(('Radio', None))
+        rows.append((ents[-1][1], ents[-1][0]))
+        sel_row = next((i for i, (_, k) in enumerate(rows) if k == self.selected), 0)
+        top = max(0, min(sel_row - body_h // 2, len(rows) - body_h))
+        for y, (label, key) in enumerate(rows[top:top + body_h]):
+            if key is None:
+                scr.addnstr(1 + y, 0, label, sw - 1, theme.HEAD)
+                continue
+            u = self.unread.get(key, 0)
+            tail = f' {u}' if u else ''
+            text = ' ' + label[:sw - 3 - len(tail)]
+            text = text.ljust(sw - 1 - len(tail)) + tail
+            attr = theme.SEL if key == self.selected else (
+                theme.UNREAD if u else curses.A_NORMAL)
+            scr.addnstr(1 + y, 0, text, sw - 1, attr)
+        for y in range(1, h - 2):
+            scr.addstr(y, sw, '│')
+
+        # title
+        si = (self.mc.self_info if self.mc else None) or {}
+        title = f' mcorechat — {si.get("name", "disconnected")} '
+        if self.selected:
+            title += f'— {self.name_for(self.selected)} '
+        scr.addnstr(0, 0, ' ' * w, w - 1, theme.REV)
+        scr.addnstr(0, 0, title, w - 1, theme.REV)
+        room = w - 1 - len(title) - 2
+        if room > 8 and self.status:
+            msg = self.status if len(self.status) <= room else self.status[:room - 1] + '…'
+            scr.addnstr(0, w - 1 - len(msg) - 1, msg, room, theme.result_attr(msg, theme.REV))
+
+        # messages
+        lines = self.render_lines(mw)
+        self.last_body_h = body_h
+        if self.focus == 'msgs':
+            self.msg_sel = max(0, min(self.msg_sel, len(self.history.get(self.selected, [])) - 1))
+            idx = [i for i, l in enumerate(lines) if l[2] == self.msg_sel]
+            if idx:                          # scroll so the highlighted message is visible
+                end_now = len(lines) - self.scroll
+                if idx[-1] >= end_now:
+                    self.scroll = len(lines) - idx[-1] - 1
+                elif idx[0] < end_now - body_h:
+                    self.scroll = max(0, len(lines) - idx[0] - body_h)
+        self.scroll = min(self.scroll, max(0, len(lines) - body_h))
+        end = len(lines) - self.scroll
+        for y, (text, attr, n) in enumerate(lines[max(0, end - body_h):end]):
+            if self.focus == 'msgs' and n == self.msg_sel:
+                attr = theme.SEL
+            scr.addnstr(1 + y, sw + 1, text, mw, attr)
+        if self.scroll:
+            scr.addnstr(body_h, sw + 1, f'-- {self.scroll} lines up (PgDn) --', mw, curses.A_DIM)
+
+        # input + status
+        prompt = '> '
+        vis = w - len(prompt) - 1
+        start = max(0, self.pos - vis + 1)
+        scr.addnstr(h - 2, 0, prompt + self.buf[start:start + vis], w - 1)
+        keys = [('F1', 'Help'), ('F2', 'Settings'),
+                ('F3', 'Disconnect' if self.mc else 'Connect'), ('F4', 'Advert'),
+                ('F5', 'Reload'), ('F6', 'Repeaters'), ('F7', 'Log'), ('F8', 'Contact'), ('F9', 'RX log'), ('F10', 'Quit')]
+        status = ' ' + '  '.join(f'{k} {v}' for k, v in keys)
+        scr.addnstr(h - 1, 0, status.ljust(w), w - 1, theme.REV)
+        scr.move(h - 2, min(w - 1, len(prompt) + self.pos - start))
+        curses.curs_set(0 if self.focus == 'msgs' else 1)
+        if self.settings_open:
+            self.draw_settings(scr, h, w)
+        if self.picker_open:
+            self.draw_picker(scr, h, w)
+        if self.help_open:
+            self.draw_help(scr, h, w)
+        if self.details is not None:
+            self.draw_details(scr, h, w)
+        if self.search:
+            self.draw_search(scr, h, w)
+        if self.cmenu_open:
+            self.draw_cmenu(scr, h, w)
+        if self.advert_menu_open:
+            self.draw_advert_menu(scr, h, w)
+        if self.ask:
+            self.draw_ask(scr, h, w)
+        if self.confirm_remove:
+            c = self.confirm_remove['contact']
+            msg = f' Remove {c.get("adv_name", "?")}?  [y] yes  [n/Esc] no '
+            y0, x0 = h // 2, max(0, (w - len(msg)) // 2)
+            scr.addnstr(y0, x0, msg, w - 1 - x0, theme.REV | curses.A_BOLD)
+            curses.curs_set(0)
+        if self.confirm_quit:
+            msg = ' Quit mcorechat?  [y/Enter] yes  [n/Esc] no '
+            y0, x0 = h // 2, max(0, (w - len(msg)) // 2)
+            scr.addnstr(y0, x0, msg, w - 1 - x0, theme.REV | curses.A_BOLD)
+            curses.curs_set(0)
+        scr.refresh()
