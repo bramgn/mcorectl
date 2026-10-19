@@ -5,7 +5,7 @@ from . import theme
 
 
 class SettingsMixin:
-    SETTINGS = ('port', 'autoconnect', 'name', 'tx_power', 'location', 'advert', 'reboot', 'auto_add', 'repeaters', 'retries', 'theme')
+    SETTINGS = ('port', 'autoconnect', 'name', 'tx_power', 'location', 'clock', 'advert', 'reboot', 'auto_add', 'repeaters', 'retries', 'theme')
 
     def setting_rows(self) -> list[tuple[str, str]]:
         si = (self.mc.self_info if self.mc else None) or {}
@@ -17,6 +17,7 @@ class SettingsMixin:
             ('Device name', dash('name')),
             ('TX power (dBm)', dash('tx_power')),
             ('Location (lat, lon)', self.my_position_text()),
+            ('Set radio clock', 'to this computer\'s time'),
             ('Send advert', 'zero hop / flood...'),
             ('Reboot radio', 'asks first'),
             ('Auto add discovered contacts',
@@ -63,6 +64,29 @@ class SettingsMixin:
         dist = f'{km * 1000:.0f} m' if km < 1 else f'{km:.1f} km' if km < 100 else f'{km:.0f} km'
         return f'{dist} {compass}'
 
+    async def sync_radio_clock(self, force: bool = False):
+        """Put the companion radio's clock on this computer's time. The radio stamps adverts and
+        commands (such as a repeater's `clock sync`) with its own clock, so a wrong one spreads."""
+        try:
+            async with self.radio_lock:
+                r = await self.mc.commands.get_time()
+                if r.type == EventType.ERROR:
+                    log.warning('radio clock: could not read it: %s', describe_error(r.payload))
+                    return
+                diff = r.payload.get('time', 0) - time.time()
+                if abs(diff) <= 5:
+                    if force:
+                        self.status = 'radio clock is already correct'
+                    return
+                r = await self.mc.commands.set_time(int(time.time()))
+        except Exception as e:
+            log.warning('radio clock: %s', e)
+            return
+        if r.type == EventType.ERROR:
+            log.warning('radio clock was %+.0f s off and could not be set: %s', diff, describe_error(r.payload))
+        else:
+            self.status = f'radio clock was {abs(diff):.0f} s {"ahead" if diff > 0 else "behind"}, set to this computer\'s time'
+
     def ask_reboot(self):
         if self.need_radio():
             self.confirm_remove = {'label': 'Reboot the radio (the link drops, reconnect afterwards)',
@@ -101,6 +125,10 @@ class SettingsMixin:
         self.set_theme(hits[0])
 
     async def apply_setting(self, which: str, text: str | None = None):
+        if which == 'clock':
+            if self.need_radio():
+                await self.sync_radio_clock(force=True)
+            return
         if which == 'reboot':
             self.settings_open = False
             self.ask_reboot()

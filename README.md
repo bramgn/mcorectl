@@ -258,6 +258,10 @@ logged in, the repeater's chat becomes a console: every line you type is sent to
 in the same chat. *Log out* ends the session; the login is also forgotten when you disconnect. The password is never stored.
 Room servers use the same login, after which you post to them as usual.
 
+Radio clock: on connecting, mcorechat compares the companion radio's clock with this computer and sets it when it is more than a few
+seconds off (noted in the Log); *Set radio clock* in the options does it on demand. The radio stamps adverts and commands such as a
+repeater's `clock sync` with its own clock, so a wrong radio clock ends up on the repeaters too.
+
 Location: set your own position in the options (`F2`, *Location*, as `lat, lon` in decimal degrees, or `none` to clear). Contact
 details and advert packet details then show the distance and compass direction to any node that advertises a position.
 
