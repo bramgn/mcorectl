@@ -184,6 +184,7 @@ class ContactsMixin:
 
     async def run_trace(self, hops: list[str]) -> list[str]:
         """Send a trace over the given 1-byte hop hashes; returns result lines."""
+        t0 = time.monotonic()
         async with self.radio_lock:
             r = await self.mc.commands.send_trace(path=','.join(hops))
         if r.type == EventType.ERROR:
@@ -195,6 +196,7 @@ class ContactsMixin:
         if ev is None:
             return ['no reply (timed out)',
                     'Only repeaters and room servers answer traces; the node may be out of range.']
+        rtt = time.monotonic() - t0
         nodes = ev.payload.get('path', [])
         out = []
         for i, nd in enumerate(nodes):
@@ -204,7 +206,31 @@ class ContactsMixin:
         complete = sum('snr' in nd for nd in nodes) >= len(hops)
         out.append('' if out else 'empty reply')
         out.append('REACHABLE' if complete else 'incomplete path')
+        if complete:
+            out.append(f'round trip {rtt * 1000:.0f} ms (including the time to talk to the radio)')
         return out
+
+    def ping_command(self, arg: str):
+        """/ping [name]: zero-hop trace to the selected (or named) repeater or room server."""
+        arg = arg.strip().lower()
+        if arg:
+            hits = [c for c in self.contacts().values()
+                    if c.get('type') in (2, 3) and arg in c.get('adv_name', '').lower()]
+            if len(hits) != 1:
+                self.status = (f'no repeater matches "{arg}"' if not hits
+                               else f'"{arg}" is ambiguous ({len(hits)} repeaters)')
+                return
+            c = hits[0]
+        else:
+            c = self.selected_contact()
+            if c is None:
+                self.status = 'usage: /ping [repeater name] (or select a repeater first)'
+                return
+            if c.get('type') not in (2, 3):
+                self.status = f'{c.get("adv_name", "?")} is a normal client: only repeaters and room servers answer pings'
+                return
+        if self.need_radio():
+            asyncio.create_task(self.guarded(self.contact_radio_action('ping', c)))
 
     async def contact_action(self, action: str):
         c = self.selected_contact()
