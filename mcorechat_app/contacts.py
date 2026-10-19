@@ -56,7 +56,7 @@ class ContactsMixin:
         acts = list(self.CONTACT_ACTIONS)
         acts.insert(1, fav)
         if c.get('type') in (2, 3):
-            extra = [('Status / battery', 'status'), ('Telemetry', 'telemetry'), ('Owner info', 'owner')]
+            extra = [('Status / battery', 'status'), ('Telemetry', 'telemetry'), ('Owner info', 'owner'), ('Clock', 'clock')]
             if c.get('type') == 2:
                 extra += [('Neighbours', 'neighbours'), ('Regions', 'regions')]
             if (c.get('public_key', '')[:12]) in self.admin:
@@ -297,9 +297,9 @@ class ContactsMixin:
         n = c.get('out_path_len', -1)
         hops = self.hops_of(c.get('out_path', ''), n) if n not in (-1, 255) else []
         relay = c.get('type') in (2, 3)
-        if action in ('status', 'telemetry', 'neighbours', 'owner', 'regions'):
+        if action in ('status', 'telemetry', 'neighbours', 'owner', 'regions', 'clock'):
             title = {'status': 'Status', 'telemetry': 'Telemetry', 'neighbours': 'Neighbours',
-                     'owner': 'Owner info', 'regions': 'Regions'}[action]
+                     'owner': 'Owner info', 'regions': 'Regions', 'clock': 'Clock'}[action]
             self.status = f'asking {name} for {title.lower()}...'
             self.dirty = True
             lines = await getattr(self, f'repeater_{action}')(c)

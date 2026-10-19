@@ -13,7 +13,7 @@ import math
 import textwrap
 import time
 from dataclasses import asdict, dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 
 from serial.tools import list_ports
 from meshcore import MeshCore, SerialConnection, BLEConnection

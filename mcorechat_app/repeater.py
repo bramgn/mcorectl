@@ -166,3 +166,32 @@ class RepeaterMixin:
             return self.NO_REPLY
         regions = [r for r in res.replace(',', '\n').split() if r]
         return regions or ['The node reports no regions.']
+
+    async def repeater_clock(self, c: dict) -> list[str]:
+        """The repeater's own clock, from the anonymous 'basic' request (no login needed)."""
+        t0 = time.time()
+        async with self.radio_lock:
+            res = await self.mc.commands.req_basic_sync(c, min_timeout=15)
+        if not res or not res.get('data'):
+            return self.NO_REPLY
+        raw = bytes.fromhex(res['data'])
+        words = [int.from_bytes(raw[i:i + 4], 'little') for i in range(0, len(raw) - 3, 4)]
+        ok = lambda w: 1_700_000_000 <= w <= 4_100_000_000      # a plausible unix time (2023..2100)
+        # the reply starts with the echoed request tag; the clock follows it
+        stamp = next((w for w in words[1:2] + words[:1] if ok(w)), None)
+        out = []
+        if stamp is None:
+            out.append('The reply holds no recognisable clock value.')
+            out.append('If you can log in, the command "clock" asks the repeater directly.')
+        else:
+            off = stamp - t0
+            local = datetime.fromtimestamp(stamp)
+            utc = datetime.fromtimestamp(stamp, tz=timezone.utc)
+            out += [f'{"Repeater clock:":<18}{local:%Y-%m-%d %H:%M:%S} (local)',
+                    f'{"":<18}{utc:%H:%M:%S} UTC',
+                    f'{"This computer:":<18}{datetime.fromtimestamp(t0):%Y-%m-%d %H:%M:%S}',
+                    f'{"Difference:":<18}' + ('within a few seconds' if abs(off) < 5 else
+                                              f'{abs(off):.0f} s {"ahead" if off > 0 else "behind"}'
+                                              + (f' (about {abs(off) / 60:.0f} min)' if abs(off) >= 120 else ''))]
+        out += ['', f'raw reply: {raw.hex()}']
+        return out
