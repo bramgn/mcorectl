@@ -14,7 +14,7 @@ Keys:
   F3             choose a device to connect to (serial / BLE), or disconnect
   F8             Log (status messages; lights up in the sidebar on problems)
   F9             Radio (every packet heard)
-  F7             context menu (details, ping, trace, path, remove)
+  F7             context menu (details, status, telemetry, ping, trace, path, remove)
   F2             options (name, TX power, location, send advert, auto-add contacts, theme, ...)
   Ctrl-L         repaint the screen
   F1             help

@@ -255,7 +255,7 @@ nearest basic colours.
 Location: set your own position in the options (`F2`, *Location*, as `lat, lon` in decimal degrees, or `none` to clear). Contact
 details and advert packet details then show the distance and compass direction to any node that advertises a position.
 
-Contact menu (`Enter` in the list, `F7` or `/contact`, on a selected contact or repeater): Details, Ping (zero-hop trace), Trace path
+Contact menu (`Enter` in the list, `F7` or `/contact`, on a selected contact or repeater): Details, Status / battery (uptime, battery, noise floor, packet counts), Telemetry (voltage, temperature, ... as the node shares them), Neighbours (repeaters only), Ping (zero-hop trace), Trace path
 (over the stored path and back), Discover route, Set path, Reset path and Remove contact (asks first). Ping and
 trace only get answers from repeaters / room servers.
 

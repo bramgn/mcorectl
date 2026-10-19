@@ -2,6 +2,7 @@
 
 from .common import *
 from . import theme
+from .repeater import battery_text
 
 
 class ContactsMixin:
@@ -54,6 +55,11 @@ class ContactsMixin:
                else 'Add favorite', 'favorite')
         acts = list(self.CONTACT_ACTIONS)
         acts.insert(1, fav)
+        if c.get('type') in (2, 3):
+            extra = [('Status / battery', 'status'), ('Telemetry', 'telemetry')]
+            if c.get('type') == 2:
+                extra.append(('Neighbours', 'neighbours'))
+            acts[2:2] = extra
         if c.get('type') == 2:
             return tuple(acts)
         # only repeaters/rooms answer traces, so no ping for plain clients
@@ -170,6 +176,9 @@ class ContactsMixin:
             parts = ([f'SNR {snr} dB'] if snr is not None else []) + \
                     ([f'RSSI {rssi} dBm'] if rssi is not None else [])
             rows.append(('Signal', f'{", ".join(parts)} ({src}, {hhmm(when)})'))
+        stat = self.node_stats.get(c['public_key'][:12])
+        if stat:
+            rows.append(('Battery', f'{battery_text(stat[1].get("bat"))} (status of {hhmm(stat[0])})'))
         lat, lon = c.get('adv_lat'), c.get('adv_lon')
         if lat or lon:
             rows.append(('Position', f'{lat:.5f}, {lon:.5f}'))
@@ -269,7 +278,14 @@ class ContactsMixin:
         n = c.get('out_path_len', -1)
         hops = self.hops_of(c.get('out_path', ''), n) if n not in (-1, 255) else []
         relay = c.get('type') in (2, 3)
-        if action == 'ping':
+        if action in ('status', 'telemetry', 'neighbours'):
+            title = {'status': 'Status', 'telemetry': 'Telemetry', 'neighbours': 'Neighbours'}[action]
+            self.status = f'asking {name} for {title.lower()}...'
+            self.dirty = True
+            lines = await getattr(self, f'repeater_{action}')(c)
+            self.show(f'{title}: {name}', lines)
+            self.status = f'{title.lower()} received' if lines is not self.NO_REPLY else f'no reply from {name}'
+        elif action == 'ping':
             self.status = f'pinging {name}...'
             self.dirty = True
             lines = await self.run_trace([key[:2]])

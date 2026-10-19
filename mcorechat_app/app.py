@@ -7,11 +7,12 @@ from .messaging import MessagingMixin
 from .settings import SettingsMixin
 from .contacts import ContactsMixin
 from .channels import ChannelsMixin
+from .repeater import RepeaterMixin
 from .commands import CommandsMixin
 from .ui import UiMixin
 
 
-class App(ConnectionMixin, MessagingMixin, SettingsMixin, ContactsMixin, ChannelsMixin, CommandsMixin, UiMixin):
+class App(ConnectionMixin, MessagingMixin, SettingsMixin, ContactsMixin, ChannelsMixin, RepeaterMixin, CommandsMixin, UiMixin):
     @property
     def status(self) -> str:
         return self._status
@@ -110,6 +111,7 @@ class App(ConnectionMixin, MessagingMixin, SettingsMixin, ContactsMixin, Channel
         self.confirm_remove: dict | None = None
         self.help_open = False
         self.help_scroll = 0
+        self.node_stats: dict[str, tuple] = {}   # key prefix -> (time, status dict) from the last status request
         self.signal: dict[str, tuple] = {}   # key prefix -> (time, snr, rssi, source) from adverts
         self.radio_lock = asyncio.Lock()     # the library can't tell concurrent replies apart
         self.kill = ''                       # readline kill ring (one slot)
