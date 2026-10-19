@@ -252,11 +252,15 @@ nearest basic colours.
 
 `/reboot` (or *Reboot radio* in the options) restarts the radio after a confirmation; the link drops and you reconnect with `F3`.
 
-Managing a repeater: in its menu choose *Log in (manage)...* and enter the admin password (shown as `*`; empty = guest). Once
-logged in, the repeater's chat becomes a console: every line you type is sent to the repeater as a command (`ver`, `clock`,
-`advert`, `get name`, `set name ...`, `reboot`, ...; *Commands...* in the menu lists the common ones) and its answer shows up
-in the same chat. *Log out* ends the session; the login itself is also forgotten when you disconnect. The password box has a *Remember this password* checkbox (Tab toggles it, off by default); when ticked the password is kept unencrypted in `~/.config/mcorechat/passwords.json` (mode 0600, readable only by you) and the menu offers *Log in (saved password)* and *Forget saved password*. Nothing is stored unless you agree.
-Room servers use the same login, after which you post to them as usual.
+Managing a repeater: the first entry in its menu is **CLI**. It logs in (asking for the admin password, shown as `*`; empty = guest;
+there is a *Remember this password* checkbox, Tab toggles it) and then puts you straight in the input line with the title bar
+marked `(CLI)` and the prompt `<name># `. From then on every line you type is sent to the repeater as a command (`ver`, `clock`,
+`advert`, `get name`, `set name ...`, `reboot`, ...; *Commands...* in the menu lists the common ones) and its answer shows up in the
+same chat. Selecting a repeater you are not logged in to shows a hint on the input line. *Log out* ends the session; the login
+itself is also forgotten when you disconnect. The password box has a *Remember this password* checkbox (off by default); when ticked
+the password is kept unencrypted in `~/.config/mcorechat/passwords.json` (mode 0600, readable only by you) and the next CLI logs in
+without asking; *Forget saved password* removes it. Nothing is stored unless you tick the box.
+Room servers have a *Log in...* entry instead of CLI; after it you post to them as usual.
 
 Radio clock: on connecting, mcorechat compares the companion radio's clock with this computer and sets it when it is more than a few
 seconds off (noted in the Log); *Set radio clock* in the options does it on demand. The radio stamps adverts and commands such as a

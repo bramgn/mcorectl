@@ -64,21 +64,29 @@ class ContactsMixin:
                      ('Owner info', 'owner')]
             if c.get('type') == 2:
                 extra += [('Neighbours', 'neighbours'), ('Regions', 'regions')]
-            if (c.get('public_key', '')[:12]) in self.admin:
-                if c.get('type') == 2:
-                    extra += [('Console (type commands)', 'console'), ('Commands...', 'cmdhelp')]
+            pk = c.get('public_key', '')[:12]
+            rep = c.get('type') == 2
+            if pk in self.admin:
+                if rep:
+                    extra.append(('Commands...', 'cmdhelp'))
                 extra.append(('Log out', 'logout'))
-                if (c.get('public_key', '')[:12]) in self.passwords:
-                    extra.append(('Forget saved password', 'forgetpw'))
-            elif (c.get('public_key', '')[:12]) in self.passwords:
-                extra += [('Log in (saved password)', 'login'), ('Forget saved password', 'forgetpw')]
-            else:
-                extra.append(('Log in (manage)...', 'login'))
+            elif not rep:                                     # repeaters log in through the CLI entry
+                extra.append(('Log in (saved password)' if pk in self.passwords else 'Log in...', 'login'))
+            if pk in self.passwords:
+                extra.append(('Forget saved password', 'forgetpw'))
             acts[2:2] = extra
         if c.get('type') == 2:
-            return tuple(acts)
+            cli = 'CLI: type commands' if c.get('public_key', '')[:12] in self.admin else 'CLI: log in and type commands'
+            return ((cli, 'cli'),) + tuple(acts)
         # only repeaters/rooms answer traces, so no ping for plain clients
         return (('Chat', 'chat'),) + tuple(a for a in acts if a[1] != 'ping')
+
+    def repeater_cli(self) -> str | None:
+        """For a selected repeater: 'on' when logged in (typed lines are commands), else 'off'; None for anything else."""
+        c = self.selected_contact()
+        if not c or c.get('type') != 2:
+            return None
+        return 'on' if c['public_key'][:12] in self.admin else 'off'
 
     def selected_contact(self) -> dict | None:
         key = self.selected
@@ -268,6 +276,13 @@ class ContactsMixin:
         if action == 'details':
             self.show(f'Contact: {name}', self.contact_details(c))
             return
+        if action == 'cli':
+            if c['public_key'][:12] in self.admin:
+                self.select(('d', c['public_key'][:12]))
+                self.focus = 'input'
+                self.dirty = True
+                return
+            action = 'login'                                  # logging in lands in the CLI (apply_login)
         if action == 'login':
             pw = self.passwords.get(c['public_key'][:12])
             if pw is None:
@@ -280,10 +295,6 @@ class ContactsMixin:
             return
         if action == 'logout':
             asyncio.create_task(self.guarded(self.apply_logout(c)))
-            return
-        if action == 'console':
-            self.focus = 'input'
-            self.dirty = True
             return
         if action == 'cmdhelp':
             self.show(f'Commands: {name}', list(self.COMMAND_HELP))

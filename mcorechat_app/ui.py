@@ -248,6 +248,8 @@ class UiMixin:
         title = f' mcorechat {__version__} — {si["name"]} ' if si.get('name') else f' mcorechat {__version__} '
         if self.selected:
             title += f'— {self.name_for(self.selected)} '
+            if self.repeater_cli() == 'on':
+                title += '(CLI) '
         scr.addnstr(0, 0, ' ' * w, w - 1, theme.REV)
         scr.addnstr(0, 0, title, w - 1, theme.REV)
         conn = self.connection_text()          # the title bar only ever shows the connection state
@@ -278,13 +280,18 @@ class UiMixin:
             scr.addnstr(body_h, sw + 1, f'-- {self.scroll} lines up (PgDn) --', mw, curses.A_DIM)
 
         # input + status
-        prompt = '> '
+        cli = self.repeater_cli()
+        prompt = f'{self.name_for(self.selected)[:14]}# ' if cli == 'on' else '> '
         vis = w - len(prompt) - 1
         start = max(0, self.pos - vis + 1)
         if self.focus == 'side' and not self.buf:
             scr.addnstr(h - 2, 0, 'Enter: menu · Tab: write a message · type to start one', w - 1, curses.A_DIM)
         else:
             scr.addnstr(h - 2, 0, prompt + self.buf[start:start + vis], w - 1)
+            if not self.buf and cli:
+                hint = ('commands go to the repeater: ver, clock, advert, ...' if cli == 'on'
+                        else 'not logged in: Esc, Enter, then "CLI" to manage this repeater')
+                scr.addnstr(h - 2, len(prompt), hint, max(0, w - 1 - len(prompt)), curses.A_DIM)
         keys = [('F1', 'Help'), ('F2', 'Options'),
                 ('F3', 'Disconnect' if self.mc else 'Connect'),
                 ('F7', 'Menu'), ('F8', 'Log'), ('F9', 'RX log'), ('F10', 'Quit')]
