@@ -116,6 +116,7 @@ class App(ConnectionMixin, MessagingMixin, SettingsMixin, ContactsMixin, Channel
         self.confirm_remove: dict | None = None
         self.help_open = False
         self.help_scroll = 0
+        self.passwords: dict[str, str] = self.load_passwords()   # repeater key prefix -> remembered password
         self.admin: set[str] = set()         # repeaters / rooms we are logged in to (key prefixes)
         self.node_stats: dict[str, tuple] = {}   # key prefix -> (time, status dict) from the last status request
         self.signal: dict[str, tuple] = {}   # key prefix -> (time, snr, rssi, source) from adverts

@@ -36,7 +36,7 @@ class ContactsMixin:
         asyncio.create_task(self.guarded(go()))
 
     # menu actions that answer with a window; Esc on that window returns to the menu
-    WINDOW_ACTIONS = ('details', 'info', 'neighbours', 'ping', 'trace', 'discover', 'cmdhelp', 'chdetails', 'people')
+    WINDOW_ACTIONS = ('details', 'status', 'telemetry', 'clock', 'owner', 'regions', 'neighbours', 'ping', 'trace', 'discover', 'cmdhelp', 'chdetails', 'people')
 
     CONTACT_ACTIONS = (
         ('Details', 'details'), ('Ping (zero hop)', 'ping'), ('Trace path', 'trace'),
@@ -59,13 +59,19 @@ class ContactsMixin:
         acts = list(self.CONTACT_ACTIONS)
         acts.insert(1, fav)
         if c.get('type') in (2, 3):
-            extra = [('Status & info', 'info')]
+            # every fetch is its own request, so each one is its own entry (airtime)
+            extra = [('Status / battery', 'status'), ('Telemetry', 'telemetry'), ('Clock', 'clock'),
+                     ('Owner info', 'owner')]
             if c.get('type') == 2:
-                extra.append(('Neighbours', 'neighbours'))
+                extra += [('Neighbours', 'neighbours'), ('Regions', 'regions')]
             if (c.get('public_key', '')[:12]) in self.admin:
                 if c.get('type') == 2:
                     extra += [('Console (type commands)', 'console'), ('Commands...', 'cmdhelp')]
                 extra.append(('Log out', 'logout'))
+                if (c.get('public_key', '')[:12]) in self.passwords:
+                    extra.append(('Forget saved password', 'forgetpw'))
+            elif (c.get('public_key', '')[:12]) in self.passwords:
+                extra += [('Log in (saved password)', 'login'), ('Forget saved password', 'forgetpw')]
             else:
                 extra.append(('Log in (manage)...', 'login'))
             acts[2:2] = extra
@@ -263,7 +269,14 @@ class ContactsMixin:
             self.show(f'Contact: {name}', self.contact_details(c))
             return
         if action == 'login':
-            self.ask_login(c)
+            pw = self.passwords.get(c['public_key'][:12])
+            if pw is None:
+                self.ask_login(c)
+            else:
+                asyncio.create_task(self.guarded(self.apply_login(pw, c, saved=True)))
+            return
+        if action == 'forgetpw':
+            self.forget_password(c)
             return
         if action == 'logout':
             asyncio.create_task(self.guarded(self.apply_logout(c)))
@@ -304,16 +317,14 @@ class ContactsMixin:
         n = c.get('out_path_len', -1)
         hops = self.hops_of(c.get('out_path', ''), n) if n not in (-1, 255) else []
         relay = c.get('type') in (2, 3)
-        if action == 'info':
-            self.status = f'asking {name} for status and info...'
+        if action in ('status', 'telemetry', 'clock', 'owner', 'regions', 'neighbours'):
+            title = {'status': 'Status', 'telemetry': 'Telemetry', 'clock': 'Clock', 'owner': 'Owner info',
+                     'regions': 'Regions', 'neighbours': 'Neighbours'}[action]
+            self.status = f'asking {name} for {title.lower()}...'
             self.dirty = True
-            await self.repeater_info(c)
-        elif action == 'neighbours':
-            self.status = f'asking {name} for neighbours...'
-            self.dirty = True
-            lines = await self.repeater_neighbours(c)
-            self.show(f'Neighbours: {name}', lines)
-            self.status = 'neighbours received' if lines is not self.NO_REPLY else f'no reply from {name}'
+            lines = await getattr(self, f'repeater_{action}')(c)
+            self.show(f'{title}: {name}', lines)
+            self.status = f'{title.lower()} received' if lines is not self.NO_REPLY else f'no reply from {name}'
         elif action == 'ping':
             self.status = f'pinging {name}...'
             self.dirty = True
@@ -411,16 +422,19 @@ class ContactsMixin:
 
     def draw_cmenu(self, scr, h, w):
         bw = min(w - 2, 40)
-        bh = len(self.menu_actions()) + 3
+        acts = self.menu_actions()
+        vis = max(1, min(len(acts), h - 5))                  # long menus scroll on small screens
+        off = max(0, min(self.cmenu_sel - vis // 2, len(acts) - vis))
+        bh = vis + 3
         y0, x0 = max(0, (h - bh) // 2), max(0, (w - bw) // 2)
         for y in range(bh):
             scr.addstr(y0 + y, x0, ' ' * bw, theme.REV)
         scr.addnstr(y0, x0 + 1, self.name_for(self.selected), bw - 2, theme.REV | curses.A_BOLD)
-        for i, (label, _) in enumerate(self.menu_actions()):
+        for i, (label, _) in enumerate(acts[off:off + vis], off):
             attr = theme.SEL if i == self.cmenu_sel else theme.REV
-            scr.addnstr(y0 + 1 + i, x0 + 1, label.ljust(bw - 2), bw - 2, attr)
-        scr.addnstr(y0 + bh - 1, x0 + 1, 'Enter select · Esc close', bw - 2,
-                    theme.REV | curses.A_DIM)
+            scr.addnstr(y0 + 1 + i - off, x0 + 1, label.ljust(bw - 2), bw - 2, attr)
+        scr.addnstr(y0 + bh - 1, x0 + 1, 'Enter select · Esc close' + (' · ↑/↓ more' if vis < len(acts) else ''),
+                    bw - 2, theme.REV | curses.A_DIM)
         curses.curs_set(0)
 
     def draw_ask(self, scr, h, w):

@@ -99,7 +99,7 @@ class RepeaterMixin:
                     'cb': self.apply_login, 'contact': c}
         self.dirty = True
 
-    async def apply_login(self, password: str, c: dict):
+    async def apply_login(self, password: str, c: dict, saved: bool = False):
         if not self.need_radio():
             return
         name, key = c.get('adv_name', '?'), c['public_key'][:12]
@@ -108,7 +108,8 @@ class RepeaterMixin:
         async with self.radio_lock:
             ev = await self.mc.commands.send_login_sync(c, password, min_timeout=15)
         if ev is None or ev.type != EventType.LOGIN_SUCCESS:
-            self.status = f'login to {name} failed (no answer, or wrong password)'
+            self.status = (f'login to {name} failed with the saved password: forget it from the menu if it changed'
+                           if saved else f'login to {name} failed (no answer, or wrong password)')
             return
         self.admin.add(key)
         role = 'admin' if ev.payload.get('is_admin') else 'guest'
@@ -118,6 +119,8 @@ class RepeaterMixin:
         self.status = f'logged in to {name} as {role}'
         if c.get('type') == 2:
             self.focus = 'input'
+        if password and not saved and self.passwords.get(key) != password:
+            self.offer_remember(c, password)
 
     async def apply_logout(self, c: dict):
         key = c['public_key'][:12]
@@ -196,34 +199,39 @@ class RepeaterMixin:
         out += ['', f'raw reply: {raw.hex()}']
         return out
 
-    async def repeater_info(self, c: dict):
-        """One window with status, telemetry, clock and owner info (and regions for repeaters),
-        filled in as the answers arrive. Closing the window stops the remaining requests."""
-        name = c.get('adv_name', '?')
-        title = f'Info: {name}'
-        steps = [('Status', self.repeater_status), ('Telemetry', self.repeater_telemetry),
-                 ('Clock', self.repeater_clock), ('Owner info', self.repeater_owner)]
-        if c.get('type') == 2:
-            steps.append(('Regions', self.repeater_regions))
-        lines: list[str] = []
-        opened = False
+    @staticmethod
+    def load_passwords() -> dict:
+        try:
+            with open(PASSWORDS_FILE) as f:
+                data = json.load(f)
+            return {k: v for k, v in data.items() if isinstance(k, str) and isinstance(v, str)}
+        except (OSError, ValueError, AttributeError):
+            return {}
 
-        def put(pending: str | None) -> bool:
-            nonlocal opened
-            if opened and (self.details is None or self.details_title != title):
-                return False                              # the window was closed
-            body = lines + ([''] if lines else []) + ([f'asking for {pending.lower()}...'] if pending else [])
-            self.show(title, body)
-            opened = True
-            return True
+    def store_passwords(self):
+        """Write the remembered passwords; the file is created readable by this user only."""
+        try:
+            os.makedirs(os.path.dirname(PASSWORDS_FILE), exist_ok=True)
+            tmp = PASSWORDS_FILE + '.tmp'
+            fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            with os.fdopen(fd, 'w') as f:
+                json.dump(self.passwords, f, indent=2)
+            os.replace(tmp, PASSWORDS_FILE)
+        except OSError as e:
+            log.warning('could not save passwords: %s', e)
 
-        for i, (label, fn) in enumerate(steps):
-            if not put(label):
-                return
-            res = await fn(c)
-            lines += ([''] if lines else []) + [f'── {label} ──'] + res
-            if res is self.NO_REPLY and i == 0:
-                lines += ['', 'No reply to the first request, so the rest was skipped.']
-                break
-        put(None)
-        self.status = f'info received from {name}'
+    def offer_remember(self, c: dict, password: str):
+        key, name = c['public_key'][:12], c.get('adv_name', '?')
+
+        async def save():
+            self.passwords[key] = password
+            self.store_passwords()
+            self.status = f'password for {name} saved in {PASSWORDS_FILE}'
+        self.confirm_remove = {'label': f'Remember the password for {name} (stored unencrypted, readable only by you)',
+                               'run': save}
+        self.dirty = True
+
+    def forget_password(self, c: dict):
+        if self.passwords.pop(c['public_key'][:12], None) is not None:
+            self.store_passwords()
+            self.status = f'forgot the saved password for {c.get("adv_name", "?")}'

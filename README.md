@@ -255,7 +255,7 @@ nearest basic colours.
 Managing a repeater: in its menu choose *Log in (manage)...* and enter the admin password (shown as `*`; empty = guest). Once
 logged in, the repeater's chat becomes a console: every line you type is sent to the repeater as a command (`ver`, `clock`,
 `advert`, `get name`, `set name ...`, `reboot`, ...; *Commands...* in the menu lists the common ones) and its answer shows up
-in the same chat. *Log out* ends the session; the login is also forgotten when you disconnect. The password is never stored.
+in the same chat. *Log out* ends the session; the login itself is also forgotten when you disconnect. After a successful login with a password, mcorechat asks whether to remember it; if you say yes it is kept unencrypted in `~/.config/mcorechat/passwords.json` (mode 0600, readable only by you) and the menu offers *Log in (saved password)* and *Forget saved password*. Nothing is stored unless you agree.
 Room servers use the same login, after which you post to them as usual.
 
 Radio clock: on connecting, mcorechat compares the companion radio's clock with this computer and sets it when it is more than a few
@@ -267,7 +267,7 @@ details and advert packet details then show the distance and compass direction t
 
 Windows opened from a menu go back to that menu on `Esc` (a second `Esc` closes the menu); long windows scroll with Up/Down/PgUp/PgDn.
 
-Contact menu (`Enter` in the list, `F7` or `/contact`, on a selected contact or repeater): Details, Status & info (one window that fills in as the answers arrive: uptime, battery, noise floor and packet counts; telemetry such as voltage and temperature; the repeater's own clock and how far it is off; owner info; regions for repeaters; closing the window stops the remaining requests), Neighbours (repeaters only), Ping (zero-hop trace), Trace path
+Contact menu (`Enter` in the list, `F7` or `/contact`, on a selected contact or repeater): Details, Status / battery (uptime, battery, noise floor, packet counts), Telemetry (voltage, temperature, ... as the node shares them), Clock (the repeater's own time and how far it is off), Owner info (node name and owner text), Neighbours and Regions (repeaters only; each of these is a separate request over the air, so they are separate entries on purpose), Neighbours (repeaters only), Ping (zero-hop trace), Trace path
 (over the stored path and back), Discover route, Set path, Reset path and Remove contact (asks first). Ping and
 trace only get answers from repeaters / room servers.
 

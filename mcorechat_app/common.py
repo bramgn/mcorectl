@@ -22,6 +22,7 @@ from meshcore.events import EventType
 DEFAULT_PORT = '/dev/ttyUSB0'
 CONFIG_FILE = os.path.expanduser('~/.config/mcorechat/config.json')
 HISTORY_FILE = os.path.expanduser('~/.config/mcorechat/history.json')
+PASSWORDS_FILE = os.path.expanduser('~/.config/mcorechat/passwords.json')   # opt-in, mode 0600
 RX_KEY = ('r', 0)           # 'Radio': received packets as a pseudo-conversation
 LOG_KEY = ('l', 0)          # 'Log': status messages and library log lines
 MAX_RETRIES = 5
