@@ -414,6 +414,8 @@ class ContactsMixin:
         elif k == '\n':
             self.ask = None
             await a['cb'](a['text'], a['contact'])
+        elif k == '\t' and 'check' in a:
+            a['check'] = not a['check']
         elif k in ('\x7f', '\b') or k == curses.KEY_BACKSPACE:
             a['text'] = a['text'][:-1]
         elif isinstance(k, str) and k.isprintable():
@@ -446,5 +448,7 @@ class ContactsMixin:
         scr.addnstr(y0, x0 + 1, a['label'], bw - 2, theme.REV | curses.A_BOLD)
         shown = '*' * len(a['text']) if a.get('secret') else a['text']
         scr.addnstr(y0 + 1, x0 + 1, (shown + '_').ljust(bw - 2), bw - 2, theme.REV)
+        if 'check' in a:
+            scr.addnstr(y0 + 2, x0 + 1, f'[{"x" if a["check"] else " "}] {a["check_label"]}  (Tab)', bw - 2, theme.REV)
         scr.addnstr(y0 + 3, x0 + 1, 'Enter apply · Esc cancel', bw - 2, theme.REV | curses.A_DIM)
         curses.curs_set(0)

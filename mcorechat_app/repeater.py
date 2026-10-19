@@ -95,11 +95,14 @@ class RepeaterMixin:
 
     def ask_login(self, c: dict):
         name = c.get('adv_name', '?')
-        self.ask = {'label': f'Password for {name} (empty = guest login)', 'text': '', 'secret': True,
-                    'cb': self.apply_login, 'contact': c}
+        ask = {'label': f'Password for {name} (empty = guest login)', 'text': '', 'secret': True,
+               'check': False, 'check_label': 'Remember this password (stored unencrypted, mode 0600)',
+               'contact': c}
+        ask['cb'] = lambda text, contact: self.apply_login(text, contact, remember=ask['check'])
+        self.ask = ask
         self.dirty = True
 
-    async def apply_login(self, password: str, c: dict, saved: bool = False):
+    async def apply_login(self, password: str, c: dict, saved: bool = False, remember: bool = False):
         if not self.need_radio():
             return
         name, key = c.get('adv_name', '?'), c['public_key'][:12]
@@ -119,8 +122,10 @@ class RepeaterMixin:
         self.status = f'logged in to {name} as {role}'
         if c.get('type') == 2:
             self.focus = 'input'
-        if password and not saved and self.passwords.get(key) != password:
-            self.offer_remember(c, password)
+        if password and remember and not saved and self.passwords.get(key) != password:
+            self.passwords[key] = password
+            self.store_passwords()
+            self.status = f'logged in to {name} as {role}; password saved'
 
     async def apply_logout(self, c: dict):
         key = c['public_key'][:12]
@@ -219,17 +224,6 @@ class RepeaterMixin:
             os.replace(tmp, PASSWORDS_FILE)
         except OSError as e:
             log.warning('could not save passwords: %s', e)
-
-    def offer_remember(self, c: dict, password: str):
-        key, name = c['public_key'][:12], c.get('adv_name', '?')
-
-        async def save():
-            self.passwords[key] = password
-            self.store_passwords()
-            self.status = f'password for {name} saved in {PASSWORDS_FILE}'
-        self.confirm_remove = {'label': f'Remember the password for {name} (stored unencrypted, readable only by you)',
-                               'run': save}
-        self.dirty = True
 
     def forget_password(self, c: dict):
         if self.passwords.pop(c['public_key'][:12], None) is not None:

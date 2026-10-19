@@ -255,7 +255,7 @@ nearest basic colours.
 Managing a repeater: in its menu choose *Log in (manage)...* and enter the admin password (shown as `*`; empty = guest). Once
 logged in, the repeater's chat becomes a console: every line you type is sent to the repeater as a command (`ver`, `clock`,
 `advert`, `get name`, `set name ...`, `reboot`, ...; *Commands...* in the menu lists the common ones) and its answer shows up
-in the same chat. *Log out* ends the session; the login itself is also forgotten when you disconnect. After a successful login with a password, mcorechat asks whether to remember it; if you say yes it is kept unencrypted in `~/.config/mcorechat/passwords.json` (mode 0600, readable only by you) and the menu offers *Log in (saved password)* and *Forget saved password*. Nothing is stored unless you agree.
+in the same chat. *Log out* ends the session; the login itself is also forgotten when you disconnect. The password box has a *Remember this password* checkbox (Tab toggles it, off by default); when ticked the password is kept unencrypted in `~/.config/mcorechat/passwords.json` (mode 0600, readable only by you) and the menu offers *Log in (saved password)* and *Forget saved password*. Nothing is stored unless you agree.
 Room servers use the same login, after which you post to them as usual.
 
 Radio clock: on connecting, mcorechat compares the companion radio's clock with this computer and sets it when it is more than a few
