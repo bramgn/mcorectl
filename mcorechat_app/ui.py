@@ -11,8 +11,20 @@ class UiMixin:
             self.dirty = True
             return
         if self.details is not None:
-            self.details = None
             self.dirty = True
+            page = max(1, self.scr_h - 5)
+            if k in (curses.KEY_UP, curses.KEY_DOWN, curses.KEY_PPAGE, curses.KEY_NPAGE,
+                     curses.KEY_HOME, curses.KEY_END):
+                self.details_scroll = {curses.KEY_UP: self.details_scroll - 1,
+                                       curses.KEY_DOWN: self.details_scroll + 1,
+                                       curses.KEY_PPAGE: self.details_scroll - page,
+                                       curses.KEY_NPAGE: self.details_scroll + page,
+                                       curses.KEY_HOME: 0, curses.KEY_END: 10 ** 6}[k]
+                return
+            self.details = None
+            back, self.details_back = self.details_back, None
+            if back and self.selected == back[0]:        # one step back: the menu the window came from
+                self.cmenu_open, self.cmenu_sel = True, back[1]
             return
         if self.help_open:
             if k == curses.KEY_UP:
@@ -185,6 +197,7 @@ class UiMixin:
 
     def draw(self, scr):
         h, w = scr.getmaxyx()
+        self.scr_h = h
         if self.repaint:
             scr.clear()
             self.repaint = False

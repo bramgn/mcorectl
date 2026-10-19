@@ -103,6 +103,11 @@ class App(ConnectionMixin, MessagingMixin, SettingsMixin, ContactsMixin, Channel
         self.last_body_h = 0
         self.details: list[str] | None = None
         self.details_title = 'Message details'
+        self.details_scroll = 0
+        self.scr_h = 24
+        self.details_back: tuple | None = None   # (key, menu row) of the context menu to return to
+        self.menu_origin: tuple | None = None    # set when a menu action may open a window
+        self.menu_task: asyncio.Task | None = None
         self.cmenu_open = False
         self.cmenu_sel = 0
         self.advert_menu_open = False
@@ -244,6 +249,12 @@ class App(ConnectionMixin, MessagingMixin, SettingsMixin, ContactsMixin, Channel
         return [path_hex[i:i + 2] for i in range(0, n * 2, 2)]
 
     def show(self, title: str, lines: list[str]):
+        if self.details is None or title != self.details_title:
+            self.details_scroll = 0
+        if self.menu_origin:                     # opened from a context menu: Esc returns there
+            self.details_back, self.menu_origin = self.menu_origin, None
+        elif self.details is None:
+            self.details_back = None
         self.details_title, self.details = title, lines
         self.dirty = True
 

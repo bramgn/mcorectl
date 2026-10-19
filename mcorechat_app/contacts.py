@@ -35,6 +35,9 @@ class ContactsMixin:
             self.status = 'trace done'
         asyncio.create_task(self.guarded(go()))
 
+    # menu actions that answer with a window; Esc on that window returns to the menu
+    WINDOW_ACTIONS = ('details', 'info', 'neighbours', 'ping', 'trace', 'discover', 'cmdhelp', 'chdetails', 'people')
+
     CONTACT_ACTIONS = (
         ('Details', 'details'), ('Ping (zero hop)', 'ping'), ('Trace path', 'trace'),
         ('Discover route', 'discover'), ('Set path...', 'setpath'),
@@ -56,9 +59,9 @@ class ContactsMixin:
         acts = list(self.CONTACT_ACTIONS)
         acts.insert(1, fav)
         if c.get('type') in (2, 3):
-            extra = [('Status / battery', 'status'), ('Telemetry', 'telemetry'), ('Owner info', 'owner'), ('Clock', 'clock')]
+            extra = [('Status & info', 'info')]
             if c.get('type') == 2:
-                extra += [('Neighbours', 'neighbours'), ('Regions', 'regions')]
+                extra.append(('Neighbours', 'neighbours'))
             if (c.get('public_key', '')[:12]) in self.admin:
                 if c.get('type') == 2:
                     extra += [('Console (type commands)', 'console'), ('Commands...', 'cmdhelp')]
@@ -290,21 +293,27 @@ class ContactsMixin:
             return
         if not self.need_radio():
             return
-        asyncio.create_task(self.guarded(self.contact_radio_action(action, c)))
+        self.menu_task = asyncio.create_task(self.guarded(self.contact_radio_action(action, c)))
+        self.menu_task.add_done_callback(self.menu_task_done)
+
+    def menu_task_done(self, _task):
+        self.menu_task, self.menu_origin = None, None
 
     async def contact_radio_action(self, action: str, c: dict):
         name, key = c.get('adv_name', '?'), c['public_key']
         n = c.get('out_path_len', -1)
         hops = self.hops_of(c.get('out_path', ''), n) if n not in (-1, 255) else []
         relay = c.get('type') in (2, 3)
-        if action in ('status', 'telemetry', 'neighbours', 'owner', 'regions', 'clock'):
-            title = {'status': 'Status', 'telemetry': 'Telemetry', 'neighbours': 'Neighbours',
-                     'owner': 'Owner info', 'regions': 'Regions', 'clock': 'Clock'}[action]
-            self.status = f'asking {name} for {title.lower()}...'
+        if action == 'info':
+            self.status = f'asking {name} for status and info...'
             self.dirty = True
-            lines = await getattr(self, f'repeater_{action}')(c)
-            self.show(f'{title}: {name}', lines)
-            self.status = f'{title.lower()} received' if lines is not self.NO_REPLY else f'no reply from {name}'
+            await self.repeater_info(c)
+        elif action == 'neighbours':
+            self.status = f'asking {name} for neighbours...'
+            self.dirty = True
+            lines = await self.repeater_neighbours(c)
+            self.show(f'Neighbours: {name}', lines)
+            self.status = 'neighbours received' if lines is not self.NO_REPLY else f'no reply from {name}'
         elif action == 'ping':
             self.status = f'pinging {name}...'
             self.dirty = True
@@ -379,7 +388,10 @@ class ContactsMixin:
         elif k == '\n':
             act = self.menu_actions()[self.cmenu_sel][1]
             self.cmenu_open = act in ('notify', 'keep')      # settings that cycle keep the menu open
+            self.menu_origin = (self.selected, self.cmenu_sel) if act in self.WINDOW_ACTIONS else None
             await self.item_action(act)
+            if self.menu_task is None:                       # no window coming: forget the way back
+                self.menu_origin = None
         elif isinstance(k, str) and len(k) == 1 and ord(k) in (CTRL_Q, CTRL_C):
             self.quit = True
         self.dirty = True

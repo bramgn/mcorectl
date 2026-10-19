@@ -261,7 +261,9 @@ Room servers use the same login, after which you post to them as usual.
 Location: set your own position in the options (`F2`, *Location*, as `lat, lon` in decimal degrees, or `none` to clear). Contact
 details and advert packet details then show the distance and compass direction to any node that advertises a position.
 
-Contact menu (`Enter` in the list, `F7` or `/contact`, on a selected contact or repeater): Details, Status / battery (uptime, battery, noise floor, packet counts), Telemetry (voltage, temperature, ... as the node shares them), Clock (the repeater's own time and how far it is off), Owner info (node name and the owner text the operator filled in), Neighbours and Regions (repeaters only), Ping (zero-hop trace), Trace path
+Windows opened from a menu go back to that menu on `Esc` (a second `Esc` closes the menu); long windows scroll with Up/Down/PgUp/PgDn.
+
+Contact menu (`Enter` in the list, `F7` or `/contact`, on a selected contact or repeater): Details, Status & info (one window that fills in as the answers arrive: uptime, battery, noise floor and packet counts; telemetry such as voltage and temperature; the repeater's own clock and how far it is off; owner info; regions for repeaters; closing the window stops the remaining requests), Neighbours (repeaters only), Ping (zero-hop trace), Trace path
 (over the stored path and back), Discover route, Set path, Reset path and Remove contact (asks first). Ping and
 trace only get answers from repeaters / room servers.
 

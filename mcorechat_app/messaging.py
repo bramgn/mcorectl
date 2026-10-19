@@ -270,7 +270,10 @@ class MessagingMixin:
         return True
 
     def draw_details(self, scr, h, w):
-        rows = self.details[:h - 4]
+        room = h - 4
+        self.details_scroll = max(0, min(self.details_scroll, len(self.details) - room))
+        rows = self.details[self.details_scroll:self.details_scroll + room]
+        more = len(self.details) > room
         bw = min(w - 2, 78)
         bh = len(rows) + 3
         y0, x0 = max(0, (h - bh) // 2), max(0, (w - bw) // 2)
@@ -281,7 +284,9 @@ class MessagingMixin:
         for i, line in enumerate(rows):
             scr.addnstr(y0 + 1 + i, x0 + 1, line, bw - 2,
                         theme.result_attr(line, theme.REV) if verdicts else theme.REV)
-        scr.addnstr(y0 + bh - 1, x0 + 1, 'press any key to close', bw - 2,
+        scr.addnstr(y0 + bh - 1, x0 + 1,
+                    ('↑/↓ scroll · any other key closes' if more else 'press any key to close')
+                    + (' (back to the menu)' if self.details_back else ''), bw - 2,
                     theme.REV | curses.A_DIM)
         curses.curs_set(0)
 

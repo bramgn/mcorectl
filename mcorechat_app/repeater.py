@@ -195,3 +195,35 @@ class RepeaterMixin:
                                               + (f' (about {abs(off) / 60:.0f} min)' if abs(off) >= 120 else ''))]
         out += ['', f'raw reply: {raw.hex()}']
         return out
+
+    async def repeater_info(self, c: dict):
+        """One window with status, telemetry, clock and owner info (and regions for repeaters),
+        filled in as the answers arrive. Closing the window stops the remaining requests."""
+        name = c.get('adv_name', '?')
+        title = f'Info: {name}'
+        steps = [('Status', self.repeater_status), ('Telemetry', self.repeater_telemetry),
+                 ('Clock', self.repeater_clock), ('Owner info', self.repeater_owner)]
+        if c.get('type') == 2:
+            steps.append(('Regions', self.repeater_regions))
+        lines: list[str] = []
+        opened = False
+
+        def put(pending: str | None) -> bool:
+            nonlocal opened
+            if opened and (self.details is None or self.details_title != title):
+                return False                              # the window was closed
+            body = lines + ([''] if lines else []) + ([f'asking for {pending.lower()}...'] if pending else [])
+            self.show(title, body)
+            opened = True
+            return True
+
+        for i, (label, fn) in enumerate(steps):
+            if not put(label):
+                return
+            res = await fn(c)
+            lines += ([''] if lines else []) + [f'── {label} ──'] + res
+            if res is self.NO_REPLY and i == 0:
+                lines += ['', 'No reply to the first request, so the rest was skipped.']
+                break
+        put(None)
+        self.status = f'info received from {name}'
