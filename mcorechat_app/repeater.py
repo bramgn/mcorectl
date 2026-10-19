@@ -147,3 +147,22 @@ class RepeaterMixin:
             msg.status = 'sent'
             self.status = 'command sent, waiting for the answer...'
         self.dirty = True
+
+    async def repeater_owner(self, c: dict) -> list[str]:
+        async with self.radio_lock:
+            res = await self.mc.commands.req_owner_sync(c, min_timeout=15)
+        if not res:
+            return self.NO_REPLY
+        rows = [('Node name', res.get('name') or '-')]
+        out = [f'{a + ":":<14}{b}' for a, b in rows]
+        owner = (res.get('owner') or '').strip()
+        out += ['Owner info:'] + ([f'  {l}' for l in owner.splitlines()] if owner else ['  (none set)'])
+        return out
+
+    async def repeater_regions(self, c: dict) -> list[str]:
+        async with self.radio_lock:
+            res = await self.mc.commands.req_regions_sync(c, min_timeout=15)
+        if res is None:
+            return self.NO_REPLY
+        regions = [r for r in res.replace(',', '\n').split() if r]
+        return regions or ['The node reports no regions.']
