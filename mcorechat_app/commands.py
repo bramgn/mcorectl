@@ -1,7 +1,7 @@
 """CommandsMixin for the mcorechat App."""
 
 from .common import *
-from . import theme
+from . import theme, __version__
 
 
 class CommandsMixin:
@@ -160,7 +160,7 @@ class CommandsMixin:
         y0, x0 = max(0, (h - bh) // 2), max(0, (w - bw) // 2)
         for y in range(bh):
             scr.addstr(y0 + y, x0, ' ' * bw, theme.REV)
-        scr.addnstr(y0, x0 + 1, 'Help', bw - 2, theme.REV | curses.A_BOLD)
+        scr.addnstr(y0, x0 + 1, f'Help — mcorechat {__version__}', bw - 2, theme.REV | curses.A_BOLD)
         for i, (a, b) in enumerate(rows):
             if a and not b:
                 scr.addnstr(y0 + 1 + i, x0 + 1, a, bw - 2, theme.REV | curses.A_UNDERLINE)

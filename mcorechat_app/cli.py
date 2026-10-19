@@ -1,6 +1,7 @@
 """Entry point: curses loop, startup and argument handling."""
 
 from .common import *
+from . import __version__
 from . import theme
 from .app import App
 
@@ -44,6 +45,7 @@ async def run(scr, args):
 
 def main():
     ap = argparse.ArgumentParser(description='ncurses MeshCore chat client')
+    ap.add_argument('--version', action='version', version=f'mcorechat {__version__}')
     ap.add_argument('--port', default=os.environ.get('MCORECHAT_PORT'))
     ap.add_argument('--ble', metavar='ADDRESS', help='connect over BLE instead of serial')
     args = ap.parse_args()

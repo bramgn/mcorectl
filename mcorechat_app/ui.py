@@ -1,7 +1,7 @@
 """UiMixin for the mcorechat App."""
 
 from .common import *
-from . import theme
+from . import theme, __version__
 
 
 class UiMixin:
@@ -232,7 +232,7 @@ class UiMixin:
 
         # title
         si = (self.mc.self_info if self.mc else None) or {}
-        title = f' mcorechat — {si["name"]} ' if si.get('name') else ' mcorechat '
+        title = f' mcorechat {__version__} — {si["name"]} ' if si.get('name') else f' mcorechat {__version__} '
         if self.selected:
             title += f'— {self.name_for(self.selected)} '
         scr.addnstr(0, 0, ' ' * w, w - 1, theme.REV)
