@@ -127,6 +127,7 @@ class ConnectionMixin:
             return
         self.contact_cache = dict(mc.contacts)
         self.pending_acks.clear()
+        self.admin.clear()
         self.status = reason
         self.dirty = True
         try:

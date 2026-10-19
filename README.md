@@ -252,6 +252,12 @@ nearest basic colours.
 
 `/reboot` (or *Reboot radio* in the options) restarts the radio after a confirmation; the link drops and you reconnect with `F3`.
 
+Managing a repeater: in its menu choose *Log in (manage)...* and enter the admin password (shown as `*`; empty = guest). Once
+logged in, the repeater's chat becomes a console: every line you type is sent to the repeater as a command (`ver`, `clock`,
+`advert`, `get name`, `set name ...`, `reboot`, ...; *Commands...* in the menu lists the common ones) and its answer shows up
+in the same chat. *Log out* ends the session; the login is also forgotten when you disconnect. The password is never stored.
+Room servers use the same login, after which you post to them as usual.
+
 Location: set your own position in the options (`F2`, *Location*, as `lat, lon` in decimal degrees, or `none` to clear). Contact
 details and advert packet details then show the distance and compass direction to any node that advertises a position.
 

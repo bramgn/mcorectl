@@ -59,6 +59,12 @@ class ContactsMixin:
             extra = [('Status / battery', 'status'), ('Telemetry', 'telemetry')]
             if c.get('type') == 2:
                 extra.append(('Neighbours', 'neighbours'))
+            if (c.get('public_key', '')[:12]) in self.admin:
+                if c.get('type') == 2:
+                    extra += [('Console (type commands)', 'console'), ('Commands...', 'cmdhelp')]
+                extra.append(('Log out', 'logout'))
+            else:
+                extra.append(('Log in (manage)...', 'login'))
             acts[2:2] = extra
         if c.get('type') == 2:
             return tuple(acts)
@@ -253,6 +259,19 @@ class ContactsMixin:
         if action == 'details':
             self.show(f'Contact: {name}', self.contact_details(c))
             return
+        if action == 'login':
+            self.ask_login(c)
+            return
+        if action == 'logout':
+            asyncio.create_task(self.guarded(self.apply_logout(c)))
+            return
+        if action == 'console':
+            self.focus = 'input'
+            self.dirty = True
+            return
+        if action == 'cmdhelp':
+            self.show(f'Commands: {name}', list(self.COMMAND_HELP))
+            return
         if action == 'favorite':
             k = c['public_key'][:12]
             self.favorites ^= {k}
@@ -398,6 +417,7 @@ class ContactsMixin:
         for y in range(4):
             scr.addstr(y0 + y, x0, ' ' * bw, theme.REV)
         scr.addnstr(y0, x0 + 1, a['label'], bw - 2, theme.REV | curses.A_BOLD)
-        scr.addnstr(y0 + 1, x0 + 1, (a['text'] + '_').ljust(bw - 2), bw - 2, theme.REV)
+        shown = '*' * len(a['text']) if a.get('secret') else a['text']
+        scr.addnstr(y0 + 1, x0 + 1, (shown + '_').ljust(bw - 2), bw - 2, theme.REV)
         scr.addnstr(y0 + 3, x0 + 1, 'Enter apply · Esc cancel', bw - 2, theme.REV | curses.A_DIM)
         curses.curs_set(0)

@@ -75,3 +75,75 @@ class RepeaterMixin:
             ago = n['secs_ago']
             out.append(f'{who[:25]:<26}{n["snr"]:>5} dB  {ago // 60}m{ago % 60:02d}s ago')
         return out
+
+    COMMAND_HELP = (
+        'After logging in, the lines you type in a repeater chat are sent to it as commands and its',
+        'answers appear in the same chat. Typical commands (the set depends on the firmware version,',
+        'see the MeshCore documentation):',
+        '',
+        '  ver                   firmware version',
+        '  clock                 show the clock;  clock sync  sets it from this computer',
+        '  get name | radio | tx | lat | lon     read a setting',
+        '  set name <x> | lat <x> | lon <x> ...  change a setting',
+        '  advert                send an advert now',
+        '  neighbors             list heard neighbours',
+        '  password <new>        change the admin password',
+        '  reboot                restart the node',
+        '',
+        'Room servers do not take commands: after logging in you can post to them normally.',
+    )
+
+    def ask_login(self, c: dict):
+        name = c.get('adv_name', '?')
+        self.ask = {'label': f'Password for {name} (empty = guest login)', 'text': '', 'secret': True,
+                    'cb': self.apply_login, 'contact': c}
+        self.dirty = True
+
+    async def apply_login(self, password: str, c: dict):
+        if not self.need_radio():
+            return
+        name, key = c.get('adv_name', '?'), c['public_key'][:12]
+        self.status = f'logging in to {name}...'
+        self.dirty = True
+        async with self.radio_lock:
+            ev = await self.mc.commands.send_login_sync(c, password, min_timeout=15)
+        if ev is None or ev.type != EventType.LOGIN_SUCCESS:
+            self.status = f'login to {name} failed (no answer, or wrong password)'
+            return
+        self.admin.add(key)
+        role = 'admin' if ev.payload.get('is_admin') else 'guest'
+        self.select(('d', key))
+        self.note(f'logged in to {name} as {role}.'
+                  + (' Lines you type are sent as commands (see Commands in the menu).' if c.get('type') == 2 else ''))
+        self.status = f'logged in to {name} as {role}'
+        if c.get('type') == 2:
+            self.focus = 'input'
+
+    async def apply_logout(self, c: dict):
+        key = c['public_key'][:12]
+        self.admin.discard(key)
+        if self.mc:
+            async with self.radio_lock:
+                await self.mc.commands.send_logout(c)
+        self.status = f'logged out of {c.get("adv_name", "?")}'
+
+    async def send_admin(self, text: str):
+        """A line typed in a repeater chat goes out as a CLI command."""
+        c = self.selected_contact()
+        if c is None or not self.need_radio():
+            return
+        if c['public_key'][:12] not in self.admin:
+            self.status = 'log in first: Enter on the repeater, then "Log in"'
+            return
+        now = int(datetime.now().timestamp())
+        msg = Msg(now, 'me', text, mine=True, recv=now)
+        self.add(self.selected, msg)
+        async with self.radio_lock:
+            r = await self.mc.commands.send_cmd(c, text, now)
+        if r.type == EventType.ERROR:
+            msg.status = 'failed'
+            self.status = f'command not sent: {describe_error(r.payload)}'
+        else:
+            msg.status = 'sent'
+            self.status = 'command sent, waiting for the answer...'
+        self.dirty = True

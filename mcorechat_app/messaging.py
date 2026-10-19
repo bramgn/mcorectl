@@ -36,6 +36,10 @@ class MessagingMixin:
             return
         if key is None or not text or not self.need_radio():
             return
+        c = self.selected_contact()
+        if c and c.get('type') == 2:                 # repeaters take commands, not chat
+            await self.send_admin(text)
+            return
         now = int(datetime.now().timestamp())
         msg = Msg(now, 'me', text, mine=True, recv=now)
         self.add(key, msg)
