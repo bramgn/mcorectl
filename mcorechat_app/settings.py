@@ -2,16 +2,18 @@
 
 from .common import *
 from . import theme
+from .repeater import battery_text
 
 
 class SettingsMixin:
-    SETTINGS = ('port', 'autoconnect', 'name', 'tx_power', 'location', 'clock', 'advert', 'reboot', 'auto_add', 'repeaters', 'retries', 'theme')
+    SETTINGS = ('info', 'port', 'autoconnect', 'name', 'tx_power', 'location', 'clock', 'advert', 'reboot', 'auto_add', 'repeaters', 'retries', 'theme')
 
     def setting_rows(self) -> list[tuple[str, str]]:
         si = (self.mc.self_info if self.mc else None) or {}
         onoff = lambda b: 'on' if b else 'off'
         dash = lambda k: str(si[k]) if k in si else '-'
         return [
+            ('This radio', 'public key, firmware, battery...'),
             ('BLE address' if self.args.ble else 'Serial port', self.target()),
             ('Connect on startup', onoff(self.auto_connect)),
             ('Device name', dash('name')),
@@ -87,6 +89,61 @@ class SettingsMixin:
         else:
             self.status = f'radio clock was {abs(diff):.0f} s {"ahead" if diff > 0 else "behind"}, set to this computer\'s time'
 
+    async def refresh_battery(self):
+        """Read the companion's battery for the title bar (a local request, no airtime)."""
+        try:
+            async with self.radio_lock:
+                r = await self.mc.commands.get_bat()
+            if r.type != EventType.ERROR:
+                self.radio_bat = r.payload.get('level')
+                self.dirty = True
+        except Exception as e:
+            log.warning('battery: %s', e)
+
+    async def radio_info(self):
+        """Window with what the connected companion radio says about itself (no airtime)."""
+        si = self.mc.self_info or {}
+        async with self.radio_lock:
+            dev = await self.mc.commands.send_device_query()
+            bat = await self.mc.commands.get_bat()
+            tm = await self.mc.commands.get_time()
+        dev = dev.payload if dev.type != EventType.ERROR else {}
+        bat = bat.payload if bat.type != EventType.ERROR else {}
+        mv = bat.get('level')
+        self.radio_bat = mv
+        if tm.type != EventType.ERROR:
+            diff = tm.payload.get('time', 0) - time.time()
+            clock = 'in sync' if abs(diff) <= 5 else f'{abs(diff):.0f} s {"ahead of" if diff > 0 else "behind"} this computer'
+        else:
+            clock = '-'
+        nc = len(self.contacts())
+        rows = [
+            ('Name', si.get('name', '-')),
+            ('Public key', si.get('public_key', '-')),
+            ('Firmware', ' '.join(x for x in (dev.get('ver'), f'({dev["fw_build"]})' if dev.get('fw_build') else '') if x) or '-'),
+            ('Board', dev.get('model') or '-'),
+            ('Protocol version', str(dev['fw ver']) if 'fw ver' in dev else '-'),
+            ('Battery', battery_text(mv)),
+        ]
+        if 'used_kb' in bat:
+            rows.append(('Storage', f'{bat["used_kb"]} / {bat["total_kb"]} kB'))
+        rows += [
+            ('Radio', f'{si["radio_freq"]:.3f} MHz, BW {si["radio_bw"]:g} kHz, SF{si["radio_sf"]}, CR 4/{si["radio_cr"]}'
+             if 'radio_freq' in si else '-'),
+            ('TX power', f'{si["tx_power"]} dBm (max {si["max_tx_power"]})' if 'tx_power' in si and 'max_tx_power' in si
+             else f'{si.get("tx_power", "-")} dBm'),
+            ('Location', self.my_position_text()),
+            ('Clock', clock),
+            ('Contacts', f'{nc} of {dev["max_contacts"]}' if 'max_contacts' in dev else str(nc)),
+        ]
+        if 'max_channels' in dev:
+            rows.append(('Channels', f'max {dev["max_channels"]}'))
+        key = si.get('public_key', '')
+        if len(key) == 64:                      # two lines: a phone screen is narrower than 64 characters
+            i = next(n for n, r in enumerate(rows) if r[0] == 'Public key')
+            rows[i:i + 1] = [('Public key', key[:32]), ('', key[32:])]
+        self.show('This radio', [f'{a + ":" if a else "":<18}{b}' for a, b in rows])
+
     def ask_reboot(self):
         if self.need_radio():
             self.confirm_remove = {'label': 'Reboot the radio (the link drops, reconnect afterwards)',
@@ -125,6 +182,11 @@ class SettingsMixin:
         self.set_theme(hits[0])
 
     async def apply_setting(self, which: str, text: str | None = None):
+        if which == 'info':
+            if self.need_radio():
+                self.settings_open = False
+                await self.radio_info()
+            return
         if which == 'clock':
             if self.need_radio():
                 await self.sync_radio_clock(force=True)

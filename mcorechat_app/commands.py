@@ -5,7 +5,7 @@ from . import theme, __version__
 
 
 class CommandsMixin:
-    COMMAND_NAMES = ('advert', 'channel', 'clear', 'connect', 'contact', 'disconnect', 'help', 'log', 'menu', 'quit',
+    COMMAND_NAMES = ('advert', 'channel', 'clear', 'connect', 'contact', 'disconnect', 'help', 'info', 'log', 'menu', 'quit',
                      'reload', 'repeaters', 'ping', 'radio', 'reboot', 'search', 'options', 'theme', 'trace')
 
     def complete(self):
@@ -47,6 +47,11 @@ class CommandsMixin:
             return
         if name in ('p', 'ping'):
             self.ping_command(arg)
+            self.dirty = True
+            return
+        if name in ('i', 'info'):
+            if self.need_radio():
+                await self.radio_info()
             self.dirty = True
             return
         if name == 'reboot':
@@ -147,6 +152,7 @@ class CommandsMixin:
         ('/reload  /r', 'reload contacts and channels'),
         ('/options  /o  /settings', 'options (F2)'),
         ('/ping [name]', 'ping the selected or named repeater / room server'),
+        ('/info  /i', 'this radio: public key, firmware, battery, ...'),
         ('/reboot', 'reboot the radio (asks first)'),
         ('/theme [name]', 'list colour themes / switch to one'),
         ('/repeaters', 'show / hide repeaters'),

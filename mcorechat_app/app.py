@@ -118,6 +118,7 @@ class App(ConnectionMixin, MessagingMixin, SettingsMixin, ContactsMixin, Channel
         self.help_scroll = 0
         self.passwords: dict[str, str] = self.load_passwords()   # repeater key prefix -> remembered password
         self.admin: set[str] = set()         # repeaters / rooms we are logged in to (key prefixes)
+        self.radio_bat: int | None = None        # companion battery in mV, for the title bar
         self.node_stats: dict[str, tuple] = {}   # key prefix -> (time, status dict) from the last status request
         self.signal: dict[str, tuple] = {}   # key prefix -> (time, snr, rssi, source) from adverts
         self.radio_lock = asyncio.Lock()     # the library can't tell concurrent replies apart

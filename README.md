@@ -250,6 +250,8 @@ Colour themes (`/theme` lists them, `/theme <name>` switches, or press Left/Righ
 `rosewater`, `mossy` and `parchment` (for light terminals). On terminals with fewer than 256 colours they fall back to the
 nearest basic colours.
 
+`/info` (or *This radio*, first row of the options) shows what your own radio reports: public key, firmware and board, battery, radio settings, location, clock and contact count. It only talks to the radio over USB, so it costs no airtime. The title bar also shows the battery percentage (`bat 79%`), read on connect and whenever you open this window.
+
 `/reboot` (or *Reboot radio* in the options) restarts the radio after a confirmation; the link drops and you reconnect with `F3`.
 
 Managing a repeater: the first entry in its menu is **CLI**. It logs in (asking for the admin password, shown as `*`; empty = guest;

@@ -246,6 +246,8 @@ class UiMixin:
         # title
         si = (self.mc.self_info if self.mc else None) or {}
         title = f' mcorechat {__version__} — {si["name"]} ' if si.get('name') else f' mcorechat {__version__} '
+        if self.mc and self.radio_bat:
+            title += f'· bat {max(0, min(100, round((self.radio_bat - 3000) / 12)))}% '
         if self.selected:
             title += f'— {self.name_for(self.selected)} '
             if self.repeater_cli() == 'on':

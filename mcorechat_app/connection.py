@@ -96,6 +96,7 @@ class ConnectionMixin:
             log.info('device query: %s', 'ok' if r.type != EventType.ERROR else describe_error(r.payload))
             await self.load()
             await self.sync_radio_clock()
+            await self.refresh_battery()
             mc.subscribe(EventType.CONTACT_MSG_RECV, self.on_contact_msg)
             mc.subscribe(EventType.CHANNEL_MSG_RECV, self.on_chan_msg)
             mc.subscribe(EventType.ACK, self.on_ack)
